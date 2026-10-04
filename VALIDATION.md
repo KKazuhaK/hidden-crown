@@ -107,3 +107,12 @@ Administrator authorization follow-up: 82 self-hosted assertions passed. An isol
 - Each backend passed 77 actual HTTP/WebSocket undo assertions, including pending-request restart, opponent refusal/acceptance, administrator permissions, bot automatic acceptance, both human colors and cancellation of a delayed computer move.
 - Browser checks confirm current-turn timing, per-move think times, mute state surviving reload, in-progress player replay hidden, ended-game replay available. In a disposable 32-ply completed fixture, selected ply 16 was centered within 0.1 CSS pixels; final ply reached the list bottom and initial position reached the top. Only the list scroll offset is changed by replay synchronization.
 - The source repository is being made public at the user’s explicit request. Historical statements about private source/public deployment split above describe older releases. Compose templates, installer and documentation now live with the source. The installer pins its release tag and refuses to overwrite existing credentials or databases.
+
+
+## 2.3 queen interrogation — 2026-10-04
+
+Local Node.js 24 validation: both TypeScript configurations pass; 84 tests pass with SQLite, including seven crown candidates, surviving-original-queen eligibility, rank/file/diagonal vision through blockers, invalid/repeated targets, two-use quotas, complete-turn consumption, per-recipient redaction, equal-length private answers, undo barriers/reconstruction, computer knowledge, exports and board replay. Real HTTP/WebSocket suites pass: self-host 163 assertions, computer 122, undo 77, room 266, room-number joins 62, interrogation 38 (including application restart).
+
+The browser was exercised as both players: White successfully interrogated Black's king and saw the positive answer; Black saw the same public target with a private-answer label. Both language versions are present. The admin observer and export paths retain answers; ordinary player log access remains denied. Existing v1 rooms resolve the retained original implementation; new rooms default to v2. No schema migration or database reset is required.
+
+Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and PostgreSQL, plus native amd64/arm64 container, Compose, persistence, limits and capacity checks. Interrogation smoke coverage is part of both backend jobs and the container job.

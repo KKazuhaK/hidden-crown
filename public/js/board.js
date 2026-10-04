@@ -6,7 +6,7 @@ export function crownBadge(color) {
   badge.append(crownMark()); badge.setAttribute('aria-label', t('crownBadge')); return badge;
 }
 export function renderBoard(container, view, options) {
-  const { selected, candidate, enabled, onSquare } = options;
+  const { selected, candidate, enabled, onSquare, interrogating } = options;
   const flipped = view.role === 'b';
   const crowns = view.crowns ? Object.values(view.crowns).filter(Boolean) : [view.yourCrown].filter(Boolean);
   const last = view.moves.at(-1);
@@ -20,17 +20,17 @@ export function renderBoard(container, view, options) {
       const button = document.createElement('button'); button.type = 'button'; button.className = `square ${(rank + file) % 2 ? 'light' : 'dark'}`;
       button.dataset.square = squareName(square); button.disabled = !enabled;
       button.setAttribute('aria-label', t('squareLabel', { square: squareName(square), piece: piece ? pieceName(piece) : t('empty') }));
-      if (last && (last.from === square || last.to === square)) button.classList.add('last-move');
+      if (last && (last.from === square || (last.kind === 'interrogation' ? last.targetSquare === square : last.to === square))) button.classList.add('last-move');
       if (selected === square || (candidate && candidate === id)) button.classList.add('selected');
-      if (view.phase === 'crown_select' && view.role !== 'observer' && !view.crownLocked[view.role] && piece?.color === view.role && piece.type !== 'P' && !piece.promoted) button.classList.add('candidate');
+      if (view.phase === 'crown_select' && view.role !== 'observer' && !view.crownLocked[view.role] && piece?.color === view.role && piece.type !== 'P' && (view.ruleset.version === 1 || piece.type !== 'Q') && !piece.promoted) button.classList.add('candidate');
       if (piece) {
         const motion = document.createElement('span'); motion.className = 'piece-motion'; motion.dataset.pieceId = id;
         motion.append(pieceGraphic(piece));
         if (crowns.includes(id)) motion.append(crownBadge(piece.color));
         button.append(motion);
       }
-      if (target) {
-        const marker = document.createElement('span'); marker.className = target.enPassant || piece ? 'target capture-target' : 'target quiet-target'; button.append(marker);
+      if (interrogating ? view.interrogationTargets?.includes(id) : target) {
+        const marker = document.createElement('span'); marker.className = target?.enPassant || piece ? 'target capture-target' : 'target quiet-target'; button.append(marker);
       }
       if (column === 0) { const label = document.createElement('span'); label.className = 'rank-label'; label.textContent = String(rank + 1); button.append(label); }
       if (row === 7) { const label = document.createElement('span'); label.className = 'file-label'; label.textContent = 'abcdefgh'[file]; button.append(label); }

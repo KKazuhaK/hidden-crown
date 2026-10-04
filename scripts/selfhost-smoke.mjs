@@ -122,9 +122,9 @@ try {
   const god = await connect(base, room, 'observer', { ...auth, Origin: base });
   equal(observer.closed, null); equal(god.view.role, 'observer');
   await white.action({ type: 'select_crown', pieceId: 'wK' }, frame => frame.type === 'state' && frame.view.crownLocked.w);
-  await black.action({ type: 'select_crown', pieceId: 'bQ' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
+  await black.action({ type: 'select_crown', pieceId: 'bK' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
   await god.wait(frame => frame.type === 'state' && frame.view.phase === 'playing');
-  equal(god.view.crowns, { w: 'wK', b: 'bQ' }); equal(Object.hasOwn(white.view, 'crowns'), false);
+  equal(god.view.crowns, { w: 'wK', b: 'bK' }); equal(Object.hasOwn(white.view, 'crowns'), false);
   equal((await god.action({ type: 'resign' }, frame => frame.type === 'error')).code, 'player_only');
   await white.action({ type: 'move', from: 12, to: 28 }, frame => frame.type === 'state' && frame.view.moves.length === 1);
   await god.wait(frame => frame.type === 'state' && frame.view.moves.length === 1);
@@ -169,11 +169,11 @@ try {
   equal((await request(base, '/api/admin/settings', 'GET', undefined, auth)).data.waitingMinutes, 30);
   equal((await request(base, `/api/rooms/${pending.roomId}/join`, 'POST')).data.role, 'b');
   const restored = await request(base, `/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth);
-  equal(restored.data.crowns, { w: 'wK', b: 'bQ' }); equal(restored.data.moves.length, 1); check(!JSON.stringify(restored.data).includes(new URL(room.links.white, base).hash.slice(3)));
+  equal(restored.data.crowns, { w: 'wK', b: 'bK' }); equal(restored.data.moves.length, 1); check(!JSON.stringify(restored.data).includes(new URL(room.links.white, base).hash.slice(3)));
   const recoveredWhite = await connect(base, room, 'white'), recoveredGod = await connect(base, room, 'observer', { ...auth, Origin: base });
   equal((await request(base, `/api/admin/rooms/${room.roomId}/end`, 'POST', undefined, mutate)).status, 200);
   await recoveredWhite.wait(frame => frame.type === 'state' && frame.view.phase === 'ended');
-  equal(recoveredWhite.view.result.reason, 'admin'); equal(recoveredWhite.view.crowns, { w: 'wK', b: 'bQ' });
+  equal(recoveredWhite.view.result.reason, 'admin'); equal(recoveredWhite.view.crowns, { w: 'wK', b: 'bK' });
   const endedLog = await request(base, `/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth);
   equal(endedLog.data.events.at(-1).actor, 'admin');
   equal((await request(base, `/api/admin/rooms/${room.roomId}`, 'DELETE', undefined, auth)).status, 403);

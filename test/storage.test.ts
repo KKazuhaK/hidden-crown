@@ -48,6 +48,28 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect((await database.query('SELECT * FROM hc_moves WHERE room_id=$1', [game.roomId]))).toHaveLength(1);
     await expect(store.commit(applied.state, [], 1)).rejects.toThrow('room_conflict');
   });
+  it('persists private interrogation answers and quotas across loading and later undo', async () => {
+    let game = initial('INTRDB01');
+    const queen = game.pieces.wQ; game.board[queen.square!] = null; queen.square = 19; game.board[19] = queen.id;
+    const target = game.pieces.bRa; game.board[target.square!] = null;
+    game.pieces[game.board[51]!].square = null; target.square = 51; game.board[51] = target.id;
+    game.initialPosition = structuredClone({ pieces: game.pieces, board: game.board, turn: game.turn });
+    const rules = ruleRegistry.resolve(game.ruleset); await store.commit(game, [created], 0);
+    async function act(color: 'w' | 'b', command: Parameters<typeof rules.applyCommand>[2]) {
+      const result = rules.applyCommand(game, color, command, 1000 + game.ply * 1000); if ('error' in result) throw new Error(result.error);
+      result.state.revision++; await store.commit(result.state, result.events, game.revision);
+      game = (await store.load(game.roomId))!.state; return result;
+    }
+    await act('w', { type: 'interrogate', targetId: 'bRa' });
+    expect(game.moves[0].answer).toBe('clear'); expect(game.moves[0].kind).toBe('interrogation');
+    expect(rules.interrogationTargets!(game, 'w')).not.toContain('bRa');
+    expect((await store.load(game.roomId))!.events.at(-1)?.data?.answer).toBe('clear');
+    await act('b', { type: 'move', from: 52, to: 36 });
+    await act('w', { type: 'move', from: 12, to: 28 });
+    await act('w', { type: 'request_undo' }); await act('b', { type: 'respond_undo', accept: true });
+    expect(game.moves).toHaveLength(2); expect(game.moves[0].answer).toBe('clear'); expect(game.board[12]).toBe('wPe');
+    const events = (await store.load(game.roomId))!.events; expect(events.some(e => e.type === 'interrogation')).toBe(true);
+  });
   it('allows exactly one concurrent writer at the same revision', async () => {
     const game = initial('CONCUR01'); await store.commit(game, [created], 0);
     const next = { ...game, revision: 2 };
@@ -118,7 +140,7 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
   it('bounds room size and refuses changing the rule version of a stored game', async () => {
     const game = initial('BOUNDARY'); await store.commit(game, [], 0);
     await expect(store.commit({ ...game, revision: 2, ruleState: { big: 'x'.repeat(1024 * 1024) } }, [], 1)).rejects.toThrow('room_storage_limit');
-    await expect(store.commit({ ...game, revision: 2, ruleset: { ...game.ruleset, version: 2 } }, [], 1)).rejects.toThrow('room_ruleset_immutable');
+    await expect(store.commit({ ...game, revision: 2, ruleset: { ...game.ruleset, version: 1 } }, [], 1)).rejects.toThrow('room_ruleset_immutable');
     expect((await store.load(game.roomId))!.state.revision).toBe(1);
   });
   it('applies schema migrations once and persists settings and sessions', async () => {

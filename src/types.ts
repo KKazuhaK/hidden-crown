@@ -24,6 +24,11 @@ export interface Move {
   enPassant?: boolean;
 }
 export interface MoveRecord extends Move {
+  kind?: 'interrogation';
+  targetId?: string;
+  targetSquare?: Square;
+  // Equal-length private values prevent storage admission from leaking answers.
+  answer?: 'crown' | 'clear';
   ply: number;
   color: Color;
   captured?: string;
@@ -61,7 +66,7 @@ export interface GameState {
 export interface LogEvent {
   t: number;
   actor: Role | "system" | "admin";
-  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "draw_offered" | "draw_declined" | "draw_accepted" | "undo_requested" | "undo_declined" | "undo_accepted" | "resign" | "game_ended" | "rule_action";
+  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "interrogation" | "draw_offered" | "draw_declined" | "draw_accepted" | "undo_requested" | "undo_declined" | "undo_accepted" | "resign" | "game_ended" | "rule_action";
   data?: Record<string, unknown>;
 }
 export interface View {
@@ -88,6 +93,8 @@ export interface View {
   yourCrown?: string;
   crowns?: GameState["crowns"];
   legalMoves?: Move[];
+  interrogationTargets?: string[];
+  interrogationsRemaining?: { w: number; b: number };
 }
 export interface Links { white: string; black: string; observer: string }
 export interface RuleSelection { id: string; version: number; options: Record<string, unknown> }
@@ -95,6 +102,7 @@ export type InitialPosition = Pick<GameState, "pieces" | "board" | "turn">;
 export type GameCommand =
   | { type: 'select_crown'; pieceId: string }
   | { type: 'move'; from: number; to: number; promotion?: Promotion }
+  | { type: 'interrogate'; targetId: string }
   | { type: 'respond_draw' | 'respond_undo'; accept: boolean }
   | { type: 'offer_draw' | 'resign' | 'request_undo' }
   | { type: 'rule_action'; action: string; payload: Record<string, unknown> };

@@ -5,6 +5,7 @@ import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
 import { replayAt, canReplay, followReplayRow } from './replay.js';
 import { createTurnSound, startsYourTurn } from './turn-sound.js';
+import { recordsCsv, actionLabel } from './game-records.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const createButton = document.querySelector('#create-room');
@@ -27,6 +28,7 @@ let clockAnchor = { serverNow: 0, receivedAt: 0 }, promotionMoves = null;
 let rulesOpen = true, noticeKey = null, noticeValues = {}, lastPong = 0;
 let confirmationKey = null, confirmationAction = null;
 let replayPly = null;
+let interrogating = false;
 let connectAttempt = 0;
 let createMode = params.get('mode') === 'computer' ? 'computer' : 'friends', difficulty = 'medium', humanColor = 'w';
 let computerAvailable = false, capabilitiesLoaded = false;
@@ -76,7 +78,7 @@ async function copy(text, success = 'copied') {
 }
 const absolute = relative => new URL(relative, location.origin).href;
 function send(message) {
-  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw', 'request_undo', 'respond_undo', 'rule_action'].includes(message.type)) return false;
+  if (replayPly !== null && ['move', 'interrogate', 'select_crown', 'resign', 'offer_draw', 'respond_draw', 'request_undo', 'respond_undo', 'rule_action'].includes(message.type)) return false;
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
@@ -84,7 +86,8 @@ function rules(open = rulesOpen) {
   const details = node('details', 'panel'); details.open = open;
   details.append(node('summary', '', t('rules')));
   const options = view?.ruleset?.options ?? { castling: true, enPassant: true, drawPlyLimit: 100 };
-  const list = node('ol'); for (let i = 1; i <= 5; i++) list.append(node('li', '', i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : t(`rule${i}`, { plies: options.drawPlyLimit })));
+  const legacy = view?.ruleset?.version === 1;
+  const list = node('ol'); for (let i = 1; i <= (legacy ? 5 : 8); i++) list.append(node('li', '', i === 1 && legacy ? t('legacyRule1') : i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : t(`rule${i}`, { plies: options.drawPlyLimit })));
   details.append(list); details.addEventListener('toggle', () => { rulesOpen = details.open; }); return details;
 }
 function openRulesDialog() {
@@ -265,9 +268,11 @@ function moveTable() {
   for (const key of columns) header.append(node('th', '', t(key))); head.append(header); table.append(head);
   const body = node('tbody');
   for (const move of view.moves) {
-    const row = node('tr'); row.append(node('td', '', String(move.ply)), node('td', '', colorName(move.color)), node('td', 'notation', move.notation));
+    const label = actionLabel(move, t, view.pieces);
+    const row = node('tr'); row.append(node('td', '', String(move.ply)), node('td', '', colorName(move.color)), node('td', 'notation', label));
+    if (move.kind === 'interrogation') row.children[2].classList.add('interrogation-notation');
     row.dataset.ply = move.ply;
-    if (canReplay(view)) row.children[2].replaceChildren(button(move.notation, () => { seekReplay(move.ply); }, 'move-replay-link'));
+    if (canReplay(view)) row.children[2].replaceChildren(button(label, () => { seekReplay(move.ply); }, 'move-replay-link'));
     if (move.ply === replayPly) row.classList.add('replay-selected');
     if (view.role === 'observer') row.append(node('td', '', move.captured ?? '—'));
     row.append(node('td', 'move-think-time', t('seconds', { n: (move.thinkMs / 1000).toFixed(1) })));
@@ -306,6 +311,7 @@ function observerPanel() {
   for (const color of ['w', 'b']) {
     const id = view.crowns?.[color];
     panel.append(node('p', 'small', id ? crownDescription(id) : `${colorName(color)} · ${t('crownUnchosen')}`));
+    if (view.interrogationsRemaining) panel.append(node('p', 'small', `${colorName(color)} · ${t('interrogationsLeft', { n: view.interrogationsRemaining[color] })}`));
   }
   const actions = node('div', 'actions');
   actions.append(button(t('copyPlayerLinks'), () => {
@@ -323,7 +329,7 @@ function playerControls() {
     panel.append(node('h2', '', t('select')));
     if (view.crownLocked[view.role]) panel.append(node('p', 'small', t('lockedWaiting')));
     else {
-      panel.append(node('p', 'small', t('selectHelp')), node('p', 'selection-status', candidate ? t('selectedCrown', { piece: pieceName(view.pieces[candidate]) }) : ''));
+      panel.append(node('p', 'small', t(view.ruleset.version === 1 ? 'legacySelectHelp' : 'selectHelp')), node('p', 'selection-status', candidate ? t('selectedCrown', { piece: pieceName(view.pieces[candidate]) }) : ''));
       panel.append(button(t('lock'), () => {
         if (candidate) askConfirmation('lockConfirm', () => { lockPending = send({ type: 'select_crown', pieceId: candidate }); render(); });
       }, 'primary', !candidate || lockPending || connection !== 'connected', 'lock'));
@@ -331,6 +337,12 @@ function playerControls() {
   } else if (view.phase === 'playing') {
     if (view.yourCrown) panel.append(node('p', 'small', t('ownCrown', { piece: pieceName(view.pieces[view.yourCrown]) })));
     const actions = node('div', 'actions');
+    if (view.interrogationsRemaining) {
+      panel.append(node('p', 'small', t('interrogationsLeft', { n: view.interrogationsRemaining[view.role] })));
+      const control = button(t(interrogating ? 'cancelInterrogation' : 'interrogate'), () => { interrogating = !interrogating; selected = null; render(); }, interrogating ? 'primary' : '', pending || !(view.interrogationTargets?.length) || connection !== 'connected', 'eye');
+      control.setAttribute('aria-pressed', String(interrogating)); actions.append(control);
+      if (interrogating) panel.append(node('p', 'small', t('interrogateHelp')));
+    }
     actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
     actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
     actions.append(button(t('resign'), () => askConfirmation('resignConfirm', () => send({ type: 'resign' })), 'danger quiet-button', connection !== 'connected', 'flag'));
@@ -366,7 +378,7 @@ function statusText() {
 function replayLabel() {
   if (replayPly === null) return t('livePosition');
   const move = view.moves[replayPly - 1];
-  return t('replayPosition', { n: replayPly, total: view.moves.length }) + (move ? ` · ${move.notation}` : ` · ${t('initialPosition')}`);
+  return t('replayPosition', { n: replayPly, total: view.moves.length }) + (move ? ` · ${actionLabel(move, t, view.pieces)}` : ` · ${t('initialPosition')}`);
 }
 function seekReplay(ply) {
   if (!canReplay(view)) return;
@@ -418,7 +430,7 @@ function renderGame() {
   const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div', 'game-board');
   const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' &&
     ((view.phase === 'playing' && !view.undoRequest && view.turn === view.role) || (view.phase === 'crown_select' && !view.crownLocked[view.role]));
-  renderBoard(boardContainer, displayedView(), { selected, candidate, enabled, onSquare }); boardColumn.append(boardContainer);
+  renderBoard(boardContainer, displayedView(), { selected, candidate, enabled, onSquare, interrogating }); boardColumn.append(boardContainer);
   const status = node('div', 'board-status'); status.append(node('span', 'muted', statusText()), presence()); boardColumn.append(status);
   const timing = node('div', 'turn-timing'), elapsed = node('div', 'small');
   elapsed.append(node('span', '', t('turnElapsed') + ' ')); const timer = node('span', 'turn-clock'); timer.id = 'think-timer'; elapsed.append(timer); timing.append(elapsed);
@@ -471,7 +483,12 @@ function onSquare(square) {
   if (replayPly !== null || view.undoRequest) return;
   if (view.phase === 'crown_select') {
     const piece = view.pieces[view.board[square]];
-    candidate = piece?.color === view.role && piece.type !== 'P' && !piece.promoted ? piece.id : null; render(); return;
+    candidate = piece?.color === view.role && piece.type !== 'P' && (view.ruleset.version === 1 || piece.type !== 'Q') && !piece.promoted ? piece.id : null; render(); return;
+  }
+  if (interrogating) {
+    const targetId = view.board[square];
+    if (view.interrogationTargets?.includes(targetId)) { pending = send({ type: 'interrogate', targetId }); interrogating = false; render(); }
+    return;
   }
   const moves = (view.legalMoves ?? []).filter(m => m.from === selected && m.to === square);
   if (moves.length > 1) { openPromotion(moves); return; }
@@ -516,9 +533,7 @@ function downloadLog(message) {
   let content, mime;
   if (kind === 'JSON') { content = JSON.stringify(message, null, 2); mime = 'application/json'; }
   else {
-    const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    content = ['ply,color,notation,piece_id,captured_id,think_ms,timestamp_iso', ...message.moves.map(move =>
-      [move.ply, move.color, move.notation, move.pieceId, move.captured ?? '', move.thinkMs, new Date(move.at).toISOString()].map(escape).join(','))].join('\r\n');
+    content = recordsCsv(message.moves);
     mime = 'text/csv;charset=utf-8';
   }
   const url = URL.createObjectURL(new Blob([content], { type: mime }));
@@ -568,8 +583,10 @@ async function connect() {
       const oldPly = view?.moves.length, oldPhase = view?.phase, oldUndo = view?.undoRequest;
       if (startsYourTurn(view, message.view)) turnSound.play();
       view = message.view; clockAnchor = { serverNow: view.serverNow, receivedAt: performance.now() };
-      if (oldPly !== view.moves.length || oldPhase !== view.phase || JSON.stringify(oldUndo) !== JSON.stringify(view.undoRequest)) { selected = null; document.querySelector('#promotion').close(); promotionMoves = null; }
+      if (oldPly !== view.moves.length || oldPhase !== view.phase || JSON.stringify(oldUndo) !== JSON.stringify(view.undoRequest)) { selected = null; interrogating = false; document.querySelector('#promotion').close(); promotionMoves = null; }
       if (oldPly > view.moves.length || !canReplay(view)) replayPly = null;
+      const lastAction = view.moves.at(-1);
+      if (oldPly !== undefined && oldPly < view.moves.length && lastAction?.kind === 'interrogation' && lastAction.color === view.role) notice('interrogationResult', { piece: pieceName(view.pieces[lastAction.targetId]), answer: t(`interrogation_${lastAction.answer}`) });
       if (oldUndo && !view.undoRequest && view.phase === 'playing') notice(oldPly > view.moves.length ? 'undoAccepted' : 'undoDeclined');
       pending = false; lockPending = false; render();
     } else if (message.type === 'pong') lastPong = Date.now();

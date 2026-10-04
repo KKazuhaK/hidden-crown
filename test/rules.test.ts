@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ruleRegistry, RuleRegistry } from '../src/rules/registry';
-import { hiddenCrown } from '../src/rules/hidden-crown';
+import { hiddenCrown } from '../src/rules/hidden-crown-v1';
 import { viewFor } from '../src/protocol';
 import type { GameState } from '../src/types';
 
@@ -14,7 +14,7 @@ function state(options = {}) {
 }
 describe('versioned rule dispatch', () => {
   it('rejects unknown versions, arbitrary options and duplicate registration', () => {
-    expect(() => ruleRegistry.selection({ id: 'hidden-crown', version: 2 })).toThrow('unsupported_ruleset');
+    expect(() => ruleRegistry.selection({ id: 'hidden-crown', version: 999 })).toThrow('unsupported_ruleset');
     expect(() => ruleRegistry.selection({ id: 'hidden-crown', version: 1, options: { script: 'anything' } })).toThrow('invalid_ruleset');
     expect(() => ruleRegistry.selection({ id: 'hidden-crown', version: 1, options: { drawPlyLimit: 0 } })).toThrow('invalid_ruleset');
     expect(() => new RuleRegistry([hiddenCrown, hiddenCrown])).toThrow('duplicate_ruleset');

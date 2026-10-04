@@ -60,7 +60,7 @@ export class RuntimeRoom implements RoomContext {
     try {
       let command;
       if (turn.phase === 'crown_select') {
-        const choices = Object.values(turn.input.pieces).filter(p => p.color === turn.computer.color && isCrownCandidate(p));
+        const choices = Object.values(turn.input.pieces).filter(p => p.color === turn.computer.color && isCrownCandidate(p, turn.input.ruleset.version));
         command = { type: 'select_crown' as const, pieceId: choices[randomInt(choices.length)].id };
       } else if (turn.undoRequest && turn.undoRequest.color !== turn.computer.color) {
         command = { type: 'respond_undo' as const, accept: true };
@@ -69,8 +69,9 @@ export class RuntimeRoom implements RoomContext {
         command = { type: 'respond_draw' as const, accept: false };
       } else {
         const result = await this.manager.computers.search(turn.input);
-        if (!result.move) return;
-        command = { type: 'move' as const, from: result.move.from, to: result.move.to, ...(result.move.promotion ? { promotion: result.move.promotion } : {}) };
+        if (result.targetId) command = { type: 'interrogate' as const, targetId: result.targetId };
+        else if (result.move) command = { type: 'move' as const, from: result.move.from, to: result.move.to, ...(result.move.promotion ? { promotion: result.move.promotion } : {}) };
+        else return;
       }
       if (!this.deleting && !this.manager.closing && this.manager.rooms.get(this.id) === this) await this.core.computerAction(command, turn.revision);
     } catch { failed = true; }

@@ -93,7 +93,7 @@ try {
   await white.error({ type: 'select_crown', pieceId: 'wQ' }, 'invalid_crown');
   await black.action({ type: 'select_crown', pieceId: 'bPe' }, f => f.type === 'error');
   await black.action({ type: 'select_crown', pieceId: 'bPf' }, f => f.type === 'error');
-  await black.action({ type: 'select_crown', pieceId: 'bQ' }, f => f.type === 'state' && f.view.phase === 'playing');
+  await black.action({ type: 'select_crown', pieceId: 'bK' }, f => f.type === 'state' && f.view.phase === 'playing');
   await white.wait(f => f.type === 'state' && f.view.phase === 'playing');
   await white.error({ type: 'move', from: sq('e2'), to: sq('e5') }, 'illegal_move');
   await black.error({ type: 'move', from: sq('e7'), to: sq('e5') }, 'not_your_turn');
@@ -114,7 +114,7 @@ try {
   await replacement.error({ type: 'respond_draw', accept: true }, 'no_opponent_offer');
   await black.action({ type: 'offer_draw' }, f => f.type === 'state' && f.view.drawOffer === 'b');
   await replacement.action({ type: 'respond_draw', accept: true }, f => f.type === 'state' && f.view.phase === 'ended');
-  check(replacement.view.result.reason === 'agreement' && replacement.view.crowns.b === 'bQ', 'draw agreement and reveal');
+  check(replacement.view.result.reason === 'agreement' && replacement.view.crowns.b === 'bK', 'draw agreement and reveal');
   await replacement.error({ type: 'move', from: 12, to: 20 }, 'wrong_phase');
   for (const client of [white, black, reopened, replacement]) privacy(client);
   const log = await observer.action({ type: 'get_log' }, f => f.type === 'log');

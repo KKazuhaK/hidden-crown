@@ -62,6 +62,7 @@ export class Store {
             request.targetPly !== state.ply || accepted.data?.targetPly !== state.ply || previousPly - state.ply > 2)
           throw new Error('room_history_inconsistent');
         const history = await tx.query('SELECT data FROM hc_moves WHERE room_id=$1 ORDER BY ply', [state.roomId]);
+        if (history.slice(state.ply).some(row => JSON.parse(String(row.data)).kind === 'interrogation')) throw new Error('room_history_inconsistent');
         if (JSON.stringify(history.slice(0, state.ply).map(row => JSON.parse(String(row.data)))) !== JSON.stringify(moves) ||
             JSON.stringify(history.slice(state.ply).map(row => JSON.parse(String(row.data)))) !== JSON.stringify(accepted.data?.removed))
           throw new Error('room_history_inconsistent');

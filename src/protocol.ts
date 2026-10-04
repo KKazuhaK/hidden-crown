@@ -24,6 +24,7 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
     switch (m.type) {
       case "hello": if (typeof m.token !== "string" || m.token.length > 128) return null; allowed = ["token"]; break;
       case "select_crown": if (typeof m.pieceId !== "string" || m.pieceId.length > 16) return null; allowed = ["pieceId"]; break;
+      case 'interrogate': if (typeof m.targetId !== 'string' || !/^[wb](K|R[ah]|B[cf]|N[bg])$/.test(m.targetId)) return null; allowed = ['targetId']; break;
       case "move":
         if (![m.from, m.to].every(s => Number.isInteger(s) && s >= 0 && s < 64) || (m.promotion !== undefined && !["Q", "R", "B", "N"].includes(m.promotion))) return null;
         allowed = ["from", "to", "promotion"]; break;
@@ -46,13 +47,21 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
     ...(state.turnStartedAt === undefined ? {} : { turnStartedAt: state.turnStartedAt }),
     ...(state.computer ? { computer: state.computer } : {}),
     revision: state.revision, ruleset: state.ruleset, initialPosition: state.initialPosition,
-    role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn, moves: state.moves,
+    role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn,
+    moves: state.moves.map(record => {
+      const { answer, ...publicRecord } = record;
+      return role === 'observer' || role === record.color ? { ...publicRecord, ...(answer ? { answer } : {}) } : publicRecord;
+    }),
     connected, playStartedAt: state.playStartedAt, lastMoveAt: state.lastMoveAt, serverNow: now,
     crownLocked: { w: !!state.crowns.w, b: !!state.crowns.b }, drawOffer: state.drawOffer, result: state.result
   };
   if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
   if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
   const rules = ruleRegistry.resolve(state.ruleset);
+  if (rules.interrogationTargets) {
+    view.interrogationsRemaining = { w: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'w').length, b: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'b').length };
+    if (role !== 'observer') view.interrogationTargets = state.phase === 'playing' && state.turn === role && !state.undoRequest ? rules.interrogationTargets(state, role) : [];
+  }
   if (role !== 'observer') view.canRequestUndo = rules.canRequestUndo?.(state, role) ?? false;
   if (role === state.turn && state.phase === "playing") view.legalMoves = state.undoRequest ? [] : rules.legalMoves(state, state.turn);
   return view;

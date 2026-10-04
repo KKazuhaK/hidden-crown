@@ -1,6 +1,6 @@
 {
   "name": "hidden-crown",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,13 +12,14 @@
     "build": "node scripts/build-server.mjs",
     "start": "node dist/server.mjs",
     "deploy": "wrangler deploy",
-    "test": "node scripts/build-server.mjs && vitest run test/engine.test.ts test/board-motion.test.js test/replay.test.js test/rules.test.ts test/storage.test.ts test/computer.test.ts test/security.test.ts test/undo.test.ts test/turn-sound.test.js",
+    "test": "node scripts/build-server.mjs && vitest run test/engine.test.ts test/board-motion.test.js test/replay.test.js test/rules.test.ts test/storage.test.ts test/computer.test.ts test/security.test.ts test/undo.test.ts test/turn-sound.test.js test/interrogation.test.ts test/game-records.test.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test:selfhost": "node scripts/selfhost-smoke.mjs",
     "test:room": "node scripts/room-smoke.mjs",
     "test:computer": "node scripts/computer-smoke.mjs",
     "test:capacity": "node scripts/capacity-smoke.mjs",
-    "test:undo": "node scripts/undo-smoke.mjs"
+    "test:undo": "node scripts/undo-smoke.mjs",
+    "test:interrogation": "node scripts/interrogation-smoke.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

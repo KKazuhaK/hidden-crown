@@ -42,6 +42,16 @@ The header opens the dedicated `/create` page. Friend-room results display immed
 
 The seven-ply smoke game: White crowns `wK`, Black crowns `bBf`; play `e2-e4`, `g7-g5`, `Qd1-h5`, `a7-a6`, `Qh5xf7`, `a6-a5`, `Qf7xf8`. The normal pawn capture continues play, while capture of the crowned bishop wins.
 
+## Queen interrogation (2.3)
+
+New rooms use `hidden-crown@2`. Pick a crown from the seven original pieces: king, two rooks, two bishops or two knights. The queen cannot be crowned. Each side may spend two whole turns interrogating with its surviving original queen. Targets must be original enemy crown candidates on the same rank, file or diagonal; blockers do not matter. Pawns, queens, promoted pieces, captured pieces and targets already interrogated by that side are excluded.
+
+An interrogation consumes a turn without moving or capturing. Only its actor receives the answer; opponents see the queen and target, and authenticated administrator observers receive every answer. Identifying a crown does not win. Player state frames never contain the opponent’s interrogation answers, even after the game ends. JSON/CSV administrator exports include action type, target ID/square, answer and thinking time. Replays include interrogation turns without changing the board.
+
+Interrogations expire en passant, clear draw offers and count as non-capture, non-pawn turns for the existing draw limit. No-action draws require that neither a move nor interrogation is available. Undo may withdraw ordinary moves after the latest interrogation, but cannot withdraw or cross an interrogation because knowledge cannot be revoked. Computer opponents use only their own interrogation results.
+
+已有房间继续使用原规则 `hidden-crown@1`，无需迁移数据库或重置对局。新房间使用七枚候选与审问规则；规则说明、审问操作、结果和历史记录均提供中英文。审问答案只属于发起方和管理员观察者，发现王冠后仍需吃掉它。审问无法悔棋，后续普通走棋仍可申请悔棋。
+
 ## Human vs computer (2.1)
 
 Select Computer on `/create`, then Easy, Medium or Hard and White, Black or Random. A computer game reserves both seats and returns only the human's private link. Room-number joining cannot take over either seat. Returning through that link resumes the game after disconnects or a server restart.
@@ -108,7 +118,7 @@ GET /api/rules
 POST /api/rooms
 Content-Type: application/json
 
-{"ruleset":{"id":"hidden-crown","version":1,"options":{"castling":false,"enPassant":true,"drawPlyLimit":100}}}
+{"ruleset":{"id":"hidden-crown","version":2,"options":{"castling":false,"enPassant":true,"drawPlyLimit":100}}}
 ```
 
 Omitting the body keeps the original default game. The shipped UI continues to create that default; additional mode selection UIs can consume `/api/rules`. Existing frontend authentication and private-link behavior remains unchanged.

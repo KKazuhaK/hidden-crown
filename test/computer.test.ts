@@ -12,7 +12,7 @@ function game(): GameState {
   return { ...p, turn: 'b', computer: { color: 'b', difficulty: 'medium' }, revision: 1, ruleset: ruleRegistry.selection(),
     initialPosition: structuredClone(p), ruleState: { private: 'never-search-this' }, roomId: 'BOTROOM1', createdAt: 0,
     phase: 'playing', moves: [], drawOffer: null, joined: { w: true, b: true }, claimed: { w: true, b: true },
-    playStartedAt: 0, lastMoveAt: null, result: null, crowns: { w: 'wQ', b: 'bK' },
+    playStartedAt: 0, lastMoveAt: null, result: null, crowns: { w: 'wRa', b: 'bK' },
     tokens: { w: 'human-private', b: 'computer-private', observer: 'admin-private' } };
 }
 function context(state: GameState, online = true) {
@@ -46,7 +46,7 @@ describe('hidden-information computer player', () => {
     const ca = new RoomCore(context(a).ctx), cb = new RoomCore(context(b).ctx); await Promise.all([ca.ready, cb.ready]);
     const pa = ca.computerTurn()!.input, pb = cb.computerTurn()!.input;
     expect(pa).toEqual(pb); expect(pa.ownCrown).toBe('bK');
-    expect(Object.keys(pa).sort()).toEqual(['color','difficulty','ruleset','pieces','board','turn','enPassant','halfmoveClock','ownCrown'].sort());
+    expect(Object.keys(pa).sort()).toEqual(['color','difficulty','ruleset','pieces','board','turn','enPassant','halfmoveClock','ownCrown','interrogationTargets','interrogationKnowledge'].sort());
     expect(JSON.stringify(pa)).not.toMatch(/human-private|computer-private|admin-private|never-search-this/);
     expect(chooseComputerMove(pa, () => 0).move).toEqual(chooseComputerMove(pb, () => 0).move);
   });
@@ -59,7 +59,7 @@ describe('hidden-information computer player', () => {
     }
     expect(searchLimits.hard.nodes).toBeGreaterThan(searchLimits.medium.nodes);
     expect(searchLimits.medium.depth).toBeGreaterThan(searchLimits.easy.depth); expect(g).toEqual(original);
-    expect(chooseComputerMove(input(g)).move?.to).toBe(28); // Unprotected queen, a possible crown.
+    expect(chooseComputerMove(input(g)).move?.to).toBe(28); // Unprotected queen remains a valuable capture.
   });
   it('escapes an immediate threat to its own crown without imposing chess check restrictions', () => {
     const g = tactical(); delete g.pieces.bQ; g.board[27] = null; delete g.pieces.wQ; g.board[28] = null;

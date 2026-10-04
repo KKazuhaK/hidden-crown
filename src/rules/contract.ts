@@ -12,5 +12,6 @@ export interface RuleSet {
   applyCommand(state: GameState, color: Color, command: GameCommand, now: number): { state: GameState; events: LogEvent[] } | { error: string };
   legalMoves(state: GameState, color: Color): Move[];
   canRequestUndo?(state: GameState, color: Color): boolean;
+  interrogationTargets?(state: GameState, color: Color): string[];
   applyMove(state: GameState, move: Move, now: number): { state: GameState; record: MoveRecord };
 }

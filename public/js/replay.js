@@ -27,6 +27,7 @@ export function replayAt(view, ply) {
     if (square !== null) board[square] = id;
   };
   for (const move of view.moves.slice(0, count)) {
+    if (move.kind === 'interrogation') continue;
     if (move.captured) place(move.captured, null);
     place(move.pieceId, move.to);
     if (move.castle) {

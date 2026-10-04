@@ -1,4 +1,5 @@
 import { withIcon } from './icons.js';
+import { recordsCsv } from './game-records.js';
 import { language, toggleLanguage } from './i18n.js';
 import { adminT as t } from './admin-i18n.js';
 const languageButton = document.querySelector('#language');
@@ -109,8 +110,7 @@ document.querySelector('#admin-accept').addEventListener('click', async () => {
 async function download(id, kind) {
   try {
     const log = await api(`/api/admin/rooms/${id}/log`);
-    const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const content = kind === 'JSON' ? JSON.stringify(log, null, 2) : ['ply,color,notation,piece_id,captured_id,think_ms,timestamp_iso', ...log.moves.map(move => [move.ply, move.color, move.notation, move.pieceId, move.captured, move.thinkMs, new Date(move.at).toISOString()].map(quote).join(','))].join('\r\n');
+    const content = kind === 'JSON' ? JSON.stringify(log, null, 2) : recordsCsv(log.moves);
     const url = URL.createObjectURL(new Blob([content], { type: kind === 'JSON' ? 'application/json' : 'text/csv;charset=utf-8' }));
     const link = el('a'); link.href = url; link.download = `hidden-crown-${id}.${kind.toLowerCase()}`; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (e) { error = e; render(); }

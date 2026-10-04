@@ -57,7 +57,7 @@ try {
   equal((await claim(room.roomId)).data.code, 'room_full');
   const recovered = await connect(room, 'white'); equal(recovered.view.phase, 'crown_select');
   await recovered.action({ type: 'select_crown', pieceId: 'wK' }, frame => frame.type === 'state' && frame.view.crownLocked.w);
-  await black.action({ type: 'select_crown', pieceId: 'bQ' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
+  await black.action({ type: 'select_crown', pieceId: 'bK' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
   await recovered.wait(frame => frame.type === 'state' && frame.view.phase === 'playing');
   equal((await claim(room.roomId)).data.code, 'room_started');
   await recovered.action({ type: 'resign' }, frame => frame.type === 'state' && frame.view.phase === 'ended');

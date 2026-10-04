@@ -7,6 +7,8 @@ export interface ComputerInput {
   color: Color; difficulty: Difficulty; ruleset: RuleSelection;
   pieces: Record<string, Piece>; board: (string | null)[]; turn: Color;
   enPassant: number | null; halfmoveClock: number; ownCrown: string | null;
+  interrogationTargets?: string[];
+  interrogationKnowledge?: Record<string, 'crown' | 'clear'>;
 }
 export type Position = Pick<ComputerInput, 'pieces' | 'board' | 'turn' | 'enPassant' | 'halfmoveClock'>;
 export const searchLimits = {
@@ -15,7 +17,7 @@ export const searchLimits = {
   hard: { depth: 4, nodes: 8000, milliseconds: 160 }
 } as const;
 const values = { P: 100, N: 320, B: 335, R: 500, Q: 900, K: 360 };
-export const isCrownCandidate = (p: Piece) => p.id[1] !== 'P' && !p.promoted && p.square !== null;
+export const isCrownCandidate = (p: Piece, version = 2) => p.id[1] !== 'P' && (version === 1 || p.id[1] !== 'Q') && !p.promoted && p.square !== null;
 function movesFor(p: Position, color: Color, options: RuleSelection['options']) {
   return pseudoLegalMoves(p as GameState, color).filter(m => (options.castling || !m.castle) && (options.enPassant || !m.enPassant));
 }
@@ -39,26 +41,37 @@ export function advanceSearch(p: Position, m: Move): Position {
 function ordering(p: Position, m: Move) {
   const id = p.board[m.to]; return (id ? values[p.pieces[id].type] * 10 : m.enPassant ? 1000 : 0) + (m.promotion ? values[m.promotion] : 0) + (m.castle ? 30 : 0);
 }
-export function chooseComputerMove(input: ComputerInput, random = Math.random) {
+export function chooseComputerMove(input: ComputerInput, random = Math.random): { move: Move | null; targetId?: string; nodes: number; completedDepth: number } {
   const limits = searchLimits[input.difficulty], started = performance.now();
   let nodes = 0, completedDepth = 0, aborted = false;
   const legal = movesFor(input, input.color, input.ruleset.options);
-  if (!legal.length || input.turn !== input.color || !input.ownCrown) return { move: null, nodes, completedDepth };
+  if (input.turn !== input.color || !input.ownCrown) return { move: null, nodes, completedDepth };
+  const knownCrown = Object.entries(input.interrogationKnowledge ?? {}).find(([, answer]) => answer === 'crown')?.[0];
+  const winningCapture = legal.find(move => input.board[move.to] === knownCrown && !!knownCrown);
+  if (winningCapture) return { move: winningCapture, nodes: 1, completedDepth: 1 };
+  const targets = input.interrogationTargets ?? [];
+  const candidateCapture = legal.some(move => { const piece = input.pieces[input.board[move.to]!]; return piece && isCrownCandidate(piece, input.ruleset.version) && input.interrogationKnowledge?.[piece.id] !== 'clear'; });
+  if (targets.length && (!legal.length || (!knownCrown && !candidateCapture && random() < ({ easy: .2, medium: .45, hard: .7 }[input.difficulty])))) {
+    return { move: null, targetId: targets[Math.min(targets.length - 1, Math.floor(random() * targets.length))], nodes: 1, completedDepth: 1 };
+  }
+  if (!legal.length) return { move: null, nodes, completedDepth };
   if (input.difficulty === 'easy') {
     // Usually play any legal move; sometimes prefer a capture. No hidden information.
     const captures = legal.filter(m => input.board[m.to] || m.enPassant);
     const pool = captures.length && random() < .35 ? captures : legal;
     return { move: pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))], nodes: 1, completedDepth: 1 };
   }
-  const enemy = opposite(input.color), originalCandidates = Object.values(input.pieces).filter(p => p.color === enemy && isCrownCandidate(p)).length || 1;
+  const candidate = (piece: Piece) => isCrownCandidate(piece, input.ruleset.version) && input.interrogationKnowledge?.[piece.id] !== 'clear';
+  const enemy = opposite(input.color), originalCandidates = Object.values(input.pieces).filter(p => p.color === enemy && candidate(p)).length || 1;
   function evaluate(p: Position) {
+    if (knownCrown && p.pieces[knownCrown]?.square === null) return 100000;
     if (p.pieces[input.ownCrown!]?.square === null) return -100000;
     let score = 0, candidates = 0;
     for (const piece of Object.values(p.pieces)) if (piece.square !== null) {
       const centrality = 7 - Math.abs(piece.square % 8 - 3.5) - Math.abs(Math.floor(piece.square / 8) - 3.5);
       const advancement = piece.type === 'P' ? (piece.color === 'w' ? Math.floor(piece.square / 8) : 7 - Math.floor(piece.square / 8)) * 8 : 0;
       score += (piece.color === input.color ? 1 : -1) * (values[piece.type] + centrality * 5 + advancement);
-      if (piece.color === enemy && isCrownCandidate(piece)) candidates++;
+      if (piece.color === enemy && candidate(piece)) candidates++;
     }
     // Every surviving original enemy non-pawn remains a possible crown. Uniform
     // belief is derived from public captures, never from the actual selection.
