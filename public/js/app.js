@@ -5,7 +5,7 @@ import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
 import { replayAt, canReplay, followReplayRow } from './replay.js';
 import { createTurnSound, startsYourTurn } from './turn-sound.js';
-import { recordsCsv, actionLabel } from './game-records.js';
+import { recordsCsv, actionLabel, thinkingSeconds } from './game-records.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const createButton = document.querySelector('#create-room');
@@ -250,8 +250,19 @@ function presence() {
   }
   return element;
 }
+function turnTiming() {
+  const timing = node('div', 'turn-timing'), elapsed = node('div', 'small');
+  elapsed.append(node('span', '', t('turnElapsed') + ' '));
+  const timer = node('span', 'turn-clock'); timer.id = 'think-timer'; elapsed.append(timer); timing.append(elapsed);
+  if (view.role !== 'observer') {
+    const sound = button(t(turnSound.enabled ? 'soundOn' : 'soundOff'), () => { turnSound.toggle(); render(); }, 'quiet-button sound-toggle', false, turnSound.enabled ? 'sound' : 'muted');
+    sound.setAttribute('aria-pressed', String(turnSound.enabled)); timing.append(sound);
+  }
+  return timing;
+}
 function trays(position = view) {
   const panel = node('section', 'panel'); panel.append(node('h2', '', t('captured')));
+  if (view.role !== 'observer' && !['playing', 'crown_select'].includes(view.phase)) panel.append(turnTiming());
   const crowns = position.crowns ? Object.values(position.crowns).filter(Boolean) : [position.yourCrown].filter(Boolean);
   const knowledge = interrogationKnowledge(position);
   for (const color of ['w', 'b']) {
@@ -286,7 +297,7 @@ function moveTable() {
     if (canReplay(view)) row.children[2].replaceChildren(button(label, () => { seekReplay(move.ply); }, 'move-replay-link'));
     if (move.ply === replayPly) row.classList.add('replay-selected');
     if (view.role === 'observer') row.append(node('td', '', move.captured ?? '—'));
-    row.append(node('td', 'move-think-time', t('seconds', { n: (move.thinkMs / 1000).toFixed(1) })));
+    row.append(node('td', 'move-think-time', t('seconds', { n: thinkingSeconds(move.thinkMs, view.role) })));
     body.append(row);
   }
   table.append(body); scroll.append(table); panel.append(scroll); return panel;
@@ -334,7 +345,7 @@ function resultPanel() {
 function observerPanel() {
   const panel = node('section', 'panel'), stats = node('div', 'observer-stats');
   const phase = node('div'); phase.append(node('span', 'stat-label', t('phase')), node('span', 'stat-value', t(view.phase === 'ended' ? 'endedPhase' : view.phase)));
-  stats.append(phase); panel.append(stats);
+  stats.append(phase); panel.append(stats, turnTiming());
   for (const color of ['w', 'b']) {
     const id = view.crowns?.[color];
     panel.append(node('p', 'small', id ? crownDescription(id) : `${colorName(color)} · ${t('crownUnchosen')}`));
@@ -351,7 +362,7 @@ function observerPanel() {
   panel.append(actions); return panel;
 }
 function playerControls() {
-  const panel = node('section', 'panel');
+  const panel = node('section', 'panel'); panel.append(turnTiming());
   if (view.phase === 'crown_select') {
     panel.append(node('h2', '', t('select')));
     if (view.crownLocked[view.role]) panel.append(node('p', 'small', t('lockedWaiting')));
@@ -463,13 +474,6 @@ function renderGame() {
   const status = node('div', 'board-status'); status.append(node('span', 'muted', statusText()), presence()); boardColumn.append(status);
   const legend = node('p', 'small interrogation-legend', t('interrogationMarks'));
   legend.hidden = !Object.keys(interrogationKnowledge(displayedView())).length; boardColumn.append(legend);
-  const timing = node('div', 'turn-timing'), elapsed = node('div', 'small');
-  elapsed.append(node('span', '', t('turnElapsed') + ' ')); const timer = node('span', 'turn-clock'); timer.id = 'think-timer'; elapsed.append(timer); timing.append(elapsed);
-  if (view.role !== 'observer') {
-    const sound = button(t(turnSound.enabled ? 'soundOn' : 'soundOff'), () => { turnSound.toggle(); render(); }, 'quiet-button sound-toggle', false, turnSound.enabled ? 'sound' : 'muted');
-    sound.setAttribute('aria-pressed', String(turnSound.enabled)); timing.append(sound);
-  }
-  boardColumn.append(timing);
   if (view.moves.length && canReplay(view)) boardColumn.append(replayControls());
   const sidebar = node('aside', 'sidebar');
   if (view.role === 'observer') sidebar.append(observerPanel());
@@ -477,7 +481,7 @@ function renderGame() {
     const controls = node('fieldset', 'player-controls'); controls.disabled = replayPly !== null; controls.append(playerControls()); sidebar.append(controls);
   }
   const captureTrays = node('div', 'capture-trays'); captureTrays.append(trays(displayedView()));
-  sidebar.append(captureTrays, moveTable(), rules()); layout.append(boardColumn, sidebar); page.append(layout); app.replaceChildren(page);
+  sidebar.append(captureTrays, moveTable()); layout.append(boardColumn, sidebar); page.append(layout); app.replaceChildren(page);
   const scroll = app.querySelector('.move-scroll'); if (scroll && scrollPosition !== undefined) scroll.scrollTop = scrollPosition;
   if (replayPly !== null) followReplayRow(scroll, app.querySelector(`[data-ply="${replayPly}"]`));
   if (replayPly === null) animateBoard(boardContainer.querySelector('.board'), view); else resetBoardMotion(view);
@@ -555,7 +559,7 @@ function updateTimer() {
   const timer = document.querySelector('#think-timer'); if (!timer || !view) return;
   const start = view.turnStartedAt ?? view.lastMoveAt ?? view.playStartedAt;
   if (view.phase !== 'playing' || start == null || replayPly !== null) timer.textContent = '—';
-  else timer.textContent = t('seconds', { n: Math.max(0, (clockAnchor.serverNow + performance.now() - clockAnchor.receivedAt - start) / 1000).toFixed(1) });
+  else timer.textContent = t('seconds', { n: thinkingSeconds(clockAnchor.serverNow + performance.now() - clockAnchor.receivedAt - start, view.role) });
 }
 setInterval(updateTimer, 200);
 function downloadLog(message) {

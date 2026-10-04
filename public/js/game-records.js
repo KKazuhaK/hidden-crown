@@ -1,3 +1,7 @@
+export function thinkingSeconds(milliseconds, role) {
+  const seconds = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) / 1000 : 0;
+  return role === 'observer' ? seconds.toFixed(3) : String(Math.floor(seconds));
+}
 export function recordsCsv(records) {
   const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
   return ['ply,color,notation,piece_id,captured_id,think_ms,timestamp_iso,action,target_id,target_square,interrogation_answer', ...records.map(record =>

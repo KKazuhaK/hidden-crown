@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { recordsCsv, actionLabel } from '../public/js/game-records.js';
+import { recordsCsv, actionLabel, thinkingSeconds } from '../public/js/game-records.js';
 import { replayAt } from '../public/js/replay.js';
 import { initialPosition } from '../src/engine';
 import { crownCandidate } from '../src/rules/hidden-crown';
@@ -11,6 +11,14 @@ beforeAll(async () => {
   i18n = await import('../public/js/i18n.js');
 });
 describe('interrogations in exports and replay', () => {
+  it('shows whole seconds to players and millisecond precision to administrators without reducing exported precision', () => {
+    expect(thinkingSeconds(3599, 'w')).toBe('3');
+    expect(thinkingSeconds(3599, 'b')).toBe('3');
+    expect(thinkingSeconds(3599, 'observer')).toBe('3.599');
+    expect(thinkingSeconds(-5, 'w')).toBe('0');
+    expect(thinkingSeconds(undefined, 'observer')).toBe('0.000');
+    expect(recordsCsv([{ thinkMs: 3599, at: 5000 }])).toContain('"3599"');
+  });
   const record = { kind: 'interrogation', ply: 1, color: 'w', pieceId: 'wK', from: 4, to: 4, targetId: 'bBc', targetSquare: 58, answer: 'clear', notation: 'Ke1 ? bBc@c8', thinkMs: 4000, at: 5000 };
   it('exports the action, target, private answer and timestamp without inventing a capture', () => {
     const csv = recordsCsv([record]);

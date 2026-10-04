@@ -132,3 +132,7 @@ Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and Post
 ## 2.3.3 visual crown reveal — 2026-10-04
 
 89 unit tests pass. A completed actual HTTP/WebSocket game with a king capturing the queen crown was inspected from both player identities. The winner sees You won and the loser sees You lost; each sees their own crown first. Two illustrated cards show side, piece, starting square, survived/current square or captured/capture square. English and Chinese labels agree. At 390px the cards stack without horizontal overflow; browser console errors are absent. The observer retains side-based winner labels. No rule, persistence or export changes are introduced.
+
+## 2.3.4 timing layout and compact refresh button — 2026-10-04
+
+90 unit tests pass, including whole-second player presentation, three-decimal administrator presentation, invalid timing inputs and unchanged millisecond CSV values. Browser checks on a real HTTP/WebSocket room confirm one timer in the player operation panel, working sound toggle, integer player history and live clock, administrator three-decimal history and live clock, and the header rules dialog with no duplicate sidebar rules. English and Chinese views agree; the player panel has no horizontal overflow at 390px. The administrator refresh button uses intrinsic width (119.33 CSS pixels in the Chinese view), centers its content, and successfully refreshes the list. No game rules, database schema or exported timing precision change.
