@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { initialPosition, applyMove, pseudoLegalMoves } from '../src/engine';
-import { replayAt } from '../public/js/replay.js';
+import { replayAt, canReplay, centeredScrollTop } from '../public/js/replay.js';
 
 function game(sequence) {
   let state = { ...initialPosition(), phase: 'playing', result: null, moves: [], crowns: { w: 'wK', b: 'bK' }, lastMoveAt: null, playStartedAt: 0 };
@@ -13,6 +13,18 @@ function game(sequence) {
   return { view: { pieces: state.pieces, board: state.board, moves: state.moves, role: 'w', yourCrown: 'wK', phase: 'playing', legalMoves: [] }, positions };
 }
 describe('public move replay', () => {
+  it('opens player replay only after the game; administrator observation can replay during play', () => {
+    expect(canReplay({ phase: 'playing', role: 'w' })).toBe(false);
+    expect(canReplay({ phase: 'crown_select', role: 'b' })).toBe(false);
+    expect(canReplay({ phase: 'ended', role: 'w' })).toBe(true);
+    expect(canReplay({ phase: 'playing', role: 'observer' })).toBe(true);
+  });
+  it('centers the selected row and clamps the first and last rows to list boundaries', () => {
+    expect(centeredScrollTop(600, 40, 300, 1200)).toBe(470);
+    expect(centeredScrollTop(0, 40, 300, 1200)).toBe(0);
+    expect(centeredScrollTop(1160, 40, 300, 1200)).toBe(900);
+    expect(centeredScrollTop(40, 40, 300, 120)).toBe(0);
+  });
   it('reconstructs every position, including a normal capture, without mutating the live view', () => {
     const { view, positions } = game([['e2','e4'], ['d7','d5'], ['e4','d5'], ['g8','f6']]);
     const saved = structuredClone(view);

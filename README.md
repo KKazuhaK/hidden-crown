@@ -6,14 +6,14 @@ The production server now supports self-hosted **Docker + Nginx**, using Node.js
 
 ## Compose deployment
 
-Download `hidden-crown-compose.zip` from the private repository's Releases. Copy `.env.example` to `.env`, set `PUBLIC_ORIGIN`, `ADMIN_USERNAME` and your own `ADMIN_PASSWORD` (16–256 characters), then run:
+Download `hidden-crown-compose.zip` from [Releases](https://github.com/KKazuhaK/hidden-crown/releases). Copy `.env.example` to `.env`, set `PUBLIC_ORIGIN`, `ADMIN_USERNAME` and your own `ADMIN_PASSWORD` (16–256 characters), then run:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-No source checkout or server-side build is required. The package includes Nginx snippets; SQLite is persisted in a named Docker volume. The optional `docker-compose.secrets.yml` uses a password file instead. See [DEPLOYMENT.md](DEPLOYMENT.md) for complete steps.
+No source checkout or server-side build is required. The package includes Nginx snippets; The root Compose template uses a named Docker volume; `docker-compose.bind.yml` and `install.sh` use `/opt/hidden-crown/data` when installed there. The optional `docker-compose.secrets.yml` uses a password file instead. See [DEPLOYMENT.md](DEPLOYMENT.md) for complete steps.
 
 ## Local development
 
@@ -87,7 +87,7 @@ See [VALIDATION.md](VALIDATION.md) for completed checks and remaining external v
 - `src/persistence.ts`: asynchronous room repository contract.
 - `server/`: self-hosted HTTP/WebSocket runtime, room ownership/cache and bounded rate limiting.
 - `server/database/`: PostgreSQL pool, SQLite worker, common transaction API and versioned migrations.
-- `server/storage.ts`: normalized snapshots, append-only moves/events, sessions/settings/audit repository.
+- `server/storage.ts`: normalized snapshots, active move history and append-only events, sessions/settings/audit repository.
 - `public/`: vanilla JS board/game UI and administrator dashboard.
 - `Dockerfile`, `docker-compose.yml`, `deploy/`: container and Nginx deployment.
 - `.github/workflows/`: native architecture verification and GHCR releases.
@@ -97,7 +97,7 @@ See [VALIDATION.md](VALIDATION.md) for completed checks and remaining external v
 
 Empty `DATABASE_URL` selects SQLite for immediate local testing; a PostgreSQL URL selects an asynchronous pool. Production Compose can connect to an existing PostgreSQL with `docker-compose.postgres.yml`. No Redis/MySQL service is required. This major version uses fresh `hc_` tables and defaults to `hidden-crown-v2.sqlite`; 1.x records are not automatically imported, and the original SQLite file is preserved.
 
-A commit atomically replaces a position snapshot and appends new move/event rows. History is not serialized into the snapshot. A revision check rejects stale concurrent writes and callbacks after deletion; foreign keys cascade deletion. Schema migrations run transactionally and retain a version record.
+A commit atomically replaces a position snapshot and appends new move/event rows. An approved undo atomically trims the active move history; original moves remain in the event audit together with the undo decision. History is not serialized into the snapshot. A revision check rejects stale concurrent writes and callbacks after deletion; foreign keys cascade deletion. Schema migrations run transactionally and retain a version record.
 
 `RuleSet` is a pure, trusted-code interface for the existing 8x8 chess board/protocol family. Register an implementation in `src/rules/registry.ts` with a unique ID/version, option validation, an initial position, join/setup lifecycle, legal move generation, and `applyCommand`. The latter returns a new state plus private log events, or a safe public error. All built-in gameplay decisions now dispatch through this interface. `rule_action` provides a bounded JSON command envelope for future actions. Hidden rule data belongs in `state.ruleState`, which is never included in player or admin view payloads. Explicitly add any new public presentation fields to the protocol rather than exposing the entire rule state. New non-chess board types require a separate renderer/protocol contract.
 
@@ -116,3 +116,11 @@ Omitting the body keeps the original default game. The shipped UI continues to c
 `RoomManager` owns room loading, per-room command queues, presence, expiration and bounded caches. A future distributed implementation must add a room-owner directory/router and cross-instance broadcast before scaling application instances; changing database alone is insufficient. PostgreSQL currently enforces one application owner per database. Redis may provide shared limits/broadcast later.
 
 `npm run test:capacity` creates 100 simulated players in 50 isolated games and writes timings to ignored test artifacts. Set `TEST_DATABASE_URL` to select a disposable PostgreSQL database. The tests use real database engines and real HTTP/WebSocket connections; the local timings are not a production capacity promise.
+
+## Undo, turn timing and sound
+
+Players can request undoing their most recent move; if the opponent has replied, both plies are withdrawn. The opponent must accept or decline, and moves pause until the decision. The computer automatically accepts. Crowns remain locked; ended games cannot be undone because crowns have been revealed. Undo restores captures, promotion, castling rights, en-passant, turn and draw counters through the rules engine. Pending requests survive restart; active moves and append-only audit events are committed together in either database. RuleSet implementations can expose `canRequestUndo` and handle `request_undo`/`respond_undo` in `applyCommand`.
+
+The board shows elapsed time in the current turn and history shows each move’s think time, using server timestamps with client clock correction. Accepted undo restarts the turn timer. This is informational timing, with no clock or timeout defeat. A quiet turn chime plays on actual transitions to the player’s turn, with a persistent mute control. Browsers require an initial click or keypress to enable audio; reload and presence updates do not replay the chime.
+
+Replay is available to players after the game ends, and to administrators during observation. The selected move stays centered in the scrollable history list while dragging the timeline, clamped at the beginning and end. During play, history is informational without replay links. Source, deployment templates and `install.sh` are maintained together in this public repository.

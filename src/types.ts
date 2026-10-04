@@ -6,6 +6,7 @@ export type Square = number;
 export type Phase = "lobby" | "crown_select" | "playing" | "ended";
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export interface ComputerConfig { color: Color; difficulty: Difficulty }
+export interface UndoRequest { color: Color; targetPly: number }
 export interface Piece {
   id: string;
   color: Color;
@@ -31,6 +32,8 @@ export interface MoveRecord extends Move {
   thinkMs: number;
 }
 export interface GameState {
+  undoRequest?: UndoRequest | null;
+  turnStartedAt?: number;
   computer?: ComputerConfig;
   revision: number;
   ruleset: RuleSelection;
@@ -58,10 +61,13 @@ export interface GameState {
 export interface LogEvent {
   t: number;
   actor: Role | "system" | "admin";
-  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "draw_offered" | "draw_declined" | "draw_accepted" | "resign" | "game_ended" | "rule_action";
+  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "draw_offered" | "draw_declined" | "draw_accepted" | "undo_requested" | "undo_declined" | "undo_accepted" | "resign" | "game_ended" | "rule_action";
   data?: Record<string, unknown>;
 }
 export interface View {
+  undoRequest?: UndoRequest | null;
+  turnStartedAt?: number;
+  canRequestUndo?: boolean;
   computer?: ComputerConfig;
   revision: number;
   ruleset: RuleSelection;
@@ -89,6 +95,6 @@ export type InitialPosition = Pick<GameState, "pieces" | "board" | "turn">;
 export type GameCommand =
   | { type: 'select_crown'; pieceId: string }
   | { type: 'move'; from: number; to: number; promotion?: Promotion }
-  | { type: 'respond_draw'; accept: boolean }
-  | { type: 'offer_draw' | 'resign' }
+  | { type: 'respond_draw' | 'respond_undo'; accept: boolean }
+  | { type: 'offer_draw' | 'resign' | 'request_undo' }
   | { type: 'rule_action'; action: string; payload: Record<string, unknown> };

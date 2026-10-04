@@ -22,6 +22,7 @@ export const hiddenCrown: RuleSet = {
   onPlayersJoined(state) { if (state.phase === 'lobby' && state.joined.w && state.joined.b) state.phase = 'crown_select'; },
   applyCommand,
   legalMoves,
+  canRequestUndo(state, color) { return state.phase === 'playing' && !state.undoRequest && !state.drawOffer && state.moves.some(move => move.color === color); },
   applyMove(state: GameState, move: Move, now: number) {
     const applied = advancePosition(state, move, now);
     const next = applied.state, captured = applied.record.captured;
@@ -44,12 +45,36 @@ function applyCommand(state: GameState, color: Color, command: GameCommand, now:
     if (state.crowns[color] || !piece || piece.color !== color || piece.type === 'P' || piece.promoted || piece.square === null) return { error: 'invalid_crown' };
     next.crowns[color] = piece.id; event('crown_locked', { pieceId: piece.id });
     if (next.crowns.w && next.crowns.b) {
-      next.phase = 'playing'; next.playStartedAt = now;
+      next.phase = 'playing'; next.playStartedAt = now; next.turnStartedAt = now;
       events.push({ t: now, actor: 'system', type: 'play_started' });
     }
   } else {
     if (state.phase !== 'playing') return { error: 'wrong_phase' };
+    if (state.undoRequest && !['respond_undo', 'resign'].includes(command.type)) return { error: 'undo_pending' };
     switch (command.type) {
+      case 'request_undo': {
+        if (!hiddenCrown.canRequestUndo!(state, color)) return { error: 'undo_unavailable' };
+        const last = [...state.moves].reverse().find(move => move.color === color)!;
+        next.undoRequest = { color, targetPly: last.ply - 1 };
+        event('undo_requested', { targetPly: next.undoRequest.targetPly }); break;
+      }
+      case 'respond_undo': {
+        const request = state.undoRequest;
+        if (!request || request.color === color) return { error: 'no_opponent_undo' };
+        next.undoRequest = null;
+        if (!command.accept) { event('undo_declined'); break; }
+        const kept = state.moves.slice(0, request.targetPly), removed = state.moves.slice(request.targetPly);
+        // Rebuild through the authoritative movement engine; this restores captures,
+        // pawn promotion, castling rights, en-passant and the no-progress counter.
+        let restored = { ...next, ...structuredClone(state.initialPosition), moves: [], ply: 0, halfmoveClock: 0, enPassant: null, lastMoveAt: null, result: null } as GameState;
+        for (const record of kept) {
+          const move = legalMoves(restored, restored.turn).find(move => move.pieceId === record.pieceId && move.from === record.from && move.to === record.to && move.promotion === record.promotion);
+          if (!move) throw new Error('room_history_inconsistent');
+          restored = advancePosition(restored, move, record.at).state;
+        }
+        next = { ...restored, moves: kept, undoRequest: null, drawOffer: null, turnStartedAt: now, phase: 'playing', result: null };
+        event('undo_accepted', { targetPly: request.targetPly, removed }); break;
+      }
       case 'move': {
         if (color !== state.turn) return { error: 'not_your_turn' };
         const move = legalMoves(state, color).find(move => move.from === command.from && move.to === command.to && move.promotion === command.promotion);
@@ -67,6 +92,6 @@ function applyCommand(state: GameState, color: Color, command: GameCommand, now:
       case 'resign': next.result = { winner: opposite(color), reason: 'resign' }; event('resign'); break;
     }
   }
-  if (next.result) { next.phase = 'ended'; next.drawOffer = null; events.push({ t: now, actor: 'system', type: 'game_ended', data: { ...next.result } }); }
+  if (next.result) { next.phase = 'ended'; next.drawOffer = null; next.undoRequest = null; events.push({ t: now, actor: 'system', type: 'game_ended', data: { ...next.result } }); }
   return { state: next, events };
 }

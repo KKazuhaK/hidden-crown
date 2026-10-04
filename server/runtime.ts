@@ -62,6 +62,8 @@ export class RuntimeRoom implements RoomContext {
       if (turn.phase === 'crown_select') {
         const choices = Object.values(turn.input.pieces).filter(p => p.color === turn.computer.color && isCrownCandidate(p));
         command = { type: 'select_crown' as const, pieceId: choices[randomInt(choices.length)].id };
+      } else if (turn.undoRequest && turn.undoRequest.color !== turn.computer.color) {
+        command = { type: 'respond_undo' as const, accept: true };
       } else if (turn.drawOffer && turn.drawOffer !== turn.computer.color) {
         // Clear policy independent of hidden choices: the computer declines offers.
         command = { type: 'respond_draw' as const, accept: false };

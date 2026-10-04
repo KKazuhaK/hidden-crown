@@ -1,5 +1,15 @@
 // Reconstruct only public piece positions. Crown visibility comes from the current,
 // already-redacted view; replay never requests privileged data.
+export function canReplay(view) { return !!view && (view.role === 'observer' || view.phase === 'ended'); }
+export function centeredScrollTop(rowTop, rowHeight, viewportHeight, scrollHeight) {
+  return Math.max(0, Math.min(scrollHeight - viewportHeight, rowTop + rowHeight / 2 - viewportHeight / 2));
+}
+export function followReplayRow(scroll, row) {
+  if (!scroll) return;
+  if (!row) { scroll.scrollTop = 0; return; }
+  const top = row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - scroll.clientTop;
+  scroll.scrollTop = centeredScrollTop(top, row.getBoundingClientRect().height, scroll.clientHeight, scroll.scrollHeight);
+}
 export function replayAt(view, ply) {
   const count = Math.max(0, Math.min(view.moves.length, Math.trunc(ply)));
   const pieces = view.initialPosition ? structuredClone(view.initialPosition.pieces) : {}, board = view.initialPosition ? [...view.initialPosition.board] : Array(64).fill(null);

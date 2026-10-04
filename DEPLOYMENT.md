@@ -1,6 +1,6 @@
-# Hidden Crown 2.1：Docker Compose + Nginx
+# Hidden Crown 2.2：Docker Compose + Nginx
 
-Node.js 24 + WebSocket。留空 `DATABASE_URL` 使用 SQLite；填写 PostgreSQL URL 则连接现有 PostgreSQL 14+。Redis、MySQL 均不是依赖。源码仓库私有，GHCR 镜像和 [部署模板仓库](https://github.com/KKazuhaK/hidden-crown-deploy) 公开，可匿名拉取。
+Node.js 24 + WebSocket。留空 `DATABASE_URL` 使用 SQLite；填写 PostgreSQL URL 则连接现有 PostgreSQL 14+。Redis、MySQL 均不是依赖。[源码、部署模板和安装脚本](https://github.com/KKazuhaK/hidden-crown) 统一在公开仓库，GHCR 镜像可匿名拉取。
 
 ## 连接你已有的 PostgreSQL
 
@@ -18,8 +18,8 @@ CREATE DATABASE hidden_crown OWNER hidden_crown;
 ```bash
 sudo mkdir -p /opt/hidden-crown
 cd /opt/hidden-crown
-sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/docker-compose.postgres.yml
-sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/.env.example
+sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown/main/docker-compose.postgres.yml
+sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown/main/.env.example
 sudo cp .env.example .env
 sudo chmod 600 .env
 sudo nano .env
@@ -31,7 +31,7 @@ sudo nano .env
 PUBLIC_ORIGIN=https://chess.your-domain.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD='你自己的16至256字符管理员密码'
-HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.1.0
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.2.0
 HOST_PORT=8787
 DATABASE_URL='postgresql://hidden_crown:URL编码后的数据库密码@host.docker.internal:5432/hidden_crown'
 PG_POOL_MAX=10
@@ -71,8 +71,8 @@ sudo docker compose logs --tail=50
 sudo mkdir -p /opt/hidden-crown
 sudo install -d -m 700 -o 1000 -g 1000 /opt/hidden-crown/data
 cd /opt/hidden-crown
-sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/docker-compose.yml
-sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/.env.example
+sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown/main/docker-compose.bind.yml
+sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown/main/.env.example
 sudo cp .env.example .env
 sudo chmod 600 .env
 sudo nano .env
@@ -156,3 +156,14 @@ PostgreSQL 用现有数据库备份体系或 `pg_dump`；备份的是 PostgreSQL
 `docker-compose.secrets.yml` 可提供管理员密码文件；`.env` 用 `ADMIN_PASSWORD=using-password-file` 满足基础配置检查，文件挂载为应用用户可读。`docker-compose.build.yml` 支持源码构建。Releases 的 `hidden-crown-compose.zip` 包含所有模板、环境示例和 Nginx 文件。
 
 Cloudflare 适配器保留并共用规则和房间核心；它不具备自托管服务的全局管理员及容量管理，不作为本次生产部署方案。
+
+## 首次安装（SQLite，单仓库）
+
+已安装 Docker、Compose、wget、openssl 的服务器，执行以下命令。把域名替换成自己的：
+
+```bash
+wget -O /tmp/hidden-crown-install.sh https://raw.githubusercontent.com/KKazuhaK/hidden-crown/v2.2.0/install.sh
+sudo bash /tmp/hidden-crown-install.sh https://chess.your-domain.com
+```
+
+脚本创建 `/opt/hidden-crown/docker-compose.yml`、`.env` 和 `data/`，生成管理员密码，并拉取镜像启动服务。现有配置和数据库不会被覆盖；已部署的服务器按上面的更新步骤操作。Nginx、证书和真实 IP 配置需使用本文模板设置。

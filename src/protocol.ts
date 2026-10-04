@@ -27,11 +27,11 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
       case "move":
         if (![m.from, m.to].every(s => Number.isInteger(s) && s >= 0 && s < 64) || (m.promotion !== undefined && !["Q", "R", "B", "N"].includes(m.promotion))) return null;
         allowed = ["from", "to", "promotion"]; break;
-      case "respond_draw": if (typeof m.accept !== "boolean") return null; allowed = ["accept"]; break;
+      case "respond_draw": case 'respond_undo': if (typeof m.accept !== "boolean") return null; allowed = ["accept"]; break;
       case 'rule_action':
         if (typeof m.action !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(m.action) || !m.payload || typeof m.payload !== 'object' || Array.isArray(m.payload)) return null;
         allowed = ['action', 'payload']; break;
-      case "offer_draw": case "resign": case "get_log": case "get_links": case "ping": allowed = []; break;
+      case "offer_draw": case 'request_undo': case "resign": case "get_log": case "get_links": case "ping": allowed = []; break;
       default: return null;
     }
     if (Object.keys(m).some(key => key !== "type" && !allowed.includes(key))) return null;
@@ -42,6 +42,8 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
 export function viewFor(state: GameState, role: Role, connected: View["connected"], now = Date.now()): View {
   // Explicit allowlist: adding server-only state fields cannot accidentally disclose them.
   const view: View = {
+    undoRequest: state.undoRequest ?? null,
+    ...(state.turnStartedAt === undefined ? {} : { turnStartedAt: state.turnStartedAt }),
     ...(state.computer ? { computer: state.computer } : {}),
     revision: state.revision, ruleset: state.ruleset, initialPosition: state.initialPosition,
     role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn, moves: state.moves,
@@ -50,7 +52,9 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
   };
   if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
   if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
-  if (role === state.turn && state.phase === "playing") view.legalMoves = ruleRegistry.resolve(state.ruleset).legalMoves(state, state.turn);
+  const rules = ruleRegistry.resolve(state.ruleset);
+  if (role !== 'observer') view.canRequestUndo = rules.canRequestUndo?.(state, role) ?? false;
+  if (role === state.turn && state.phase === "playing") view.legalMoves = state.undoRequest ? [] : rules.legalMoves(state, state.turn);
   return view;
 }
 

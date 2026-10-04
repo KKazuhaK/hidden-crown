@@ -87,7 +87,7 @@ export class RoomCore {
     return this.ctx.blockConcurrencyWhile(async () => {
       if (!this.state) return false;
       if (this.state.phase !== "ended") {
-        const next = structuredClone(this.state); next.phase = "ended"; next.drawOffer = null;
+        const next = structuredClone(this.state); next.phase = "ended"; next.drawOffer = null; next.undoRequest = null;
         next.result = { winner: null, reason: "admin" };
         await this.commit(next, [{ t: Date.now(), actor: "admin", type: "game_ended", data: { winner: null, reason: "admin" } }]);
         this.broadcast();
@@ -97,17 +97,17 @@ export class RoomCore {
   }
   adminSnapshot() { return this.state ? { view: viewFor(this.state, "observer", this.connected()), events: this.log } : null; }
 
-  computerTurn(): { revision: number; computer: ComputerConfig; phase: 'crown_select' | 'playing'; input: ComputerInput; drawOffer: GameState['drawOffer'] } | undefined {
+  computerTurn(): { revision: number; computer: ComputerConfig; phase: 'crown_select' | 'playing'; input: ComputerInput; drawOffer: GameState['drawOffer']; undoRequest: GameState['undoRequest'] } | undefined {
     const state = this.state, computer = state?.computer;
     if (!state || !computer || !this.connected()[opposite(computer.color)]) return;
     const selecting = state.phase === 'crown_select' && !state.crowns[computer.color];
-    const playing = state.phase === 'playing' && (state.turn === computer.color || state.drawOffer === opposite(computer.color));
+    const playing = state.phase === 'playing' && (state.turn === computer.color || state.drawOffer === opposite(computer.color) || state.undoRequest?.color === opposite(computer.color));
     if (!selecting && !playing) return;
     // Explicit player-information projection. The worker cannot access RoomCore/state.
     const input: ComputerInput = structuredClone({ color: computer.color, difficulty: computer.difficulty,
       ruleset: state.ruleset, pieces: state.pieces, board: state.board, turn: state.turn,
       enPassant: state.enPassant, halfmoveClock: state.halfmoveClock, ownCrown: state.crowns[computer.color] });
-    return { revision: state.revision, computer, phase: state.phase as 'crown_select' | 'playing', input, drawOffer: state.drawOffer };
+    return { revision: state.revision, computer, phase: state.phase as 'crown_select' | 'playing', input, drawOffer: state.drawOffer, undoRequest: state.undoRequest };
   }
   async computerAction(command: GameCommand, revision: number) {
     return this.ctx.blockConcurrencyWhile(async () => {

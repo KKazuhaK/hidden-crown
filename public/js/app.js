@@ -3,7 +3,8 @@ import { renderBoard, squareName, crownBadge } from './board.js';
 import { withIcon } from './icons.js';
 import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
-import { replayAt } from './replay.js';
+import { replayAt, canReplay, followReplayRow } from './replay.js';
+import { createTurnSound, startsYourTurn } from './turn-sound.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const createButton = document.querySelector('#create-room');
@@ -15,6 +16,8 @@ document.querySelector('#rules-close').addEventListener('click', () => document.
 const adminWatch = location.pathname === '/admin/watch';
 const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('t');
 const token = roomId && !adminWatch ? (fragmentToken || sessionStorage.getItem(`hidden-crown:room:${roomId}`)) : null;
+const turnSound = createTurnSound();
+for (const event of ['pointerdown', 'keydown']) document.addEventListener(event, () => { if (roomId && token && !adminWatch) turnSound.unlock(); }, { capture: true });
 if (roomId && fragmentToken && !adminWatch) sessionStorage.setItem(`hidden-crown:room:${roomId}`, fragmentToken);
 let view = null, socket = null, candidate = null, selected = null, pending = false, lockPending = false;
 let connection = 'connecting', attempts = 0, reconnectTimer, pingTimer, noticeTimer;
@@ -73,7 +76,7 @@ async function copy(text, success = 'copied') {
 }
 const absolute = relative => new URL(relative, location.origin).href;
 function send(message) {
-  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw', 'rule_action'].includes(message.type)) return false;
+  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw', 'request_undo', 'respond_undo', 'rule_action'].includes(message.type)) return false;
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
@@ -258,15 +261,16 @@ function moveTable() {
   panel.append(title);
   if (!view.moves.length) { panel.append(node('div', 'empty-moves', t('noMovesYet'))); return panel; }
   const scroll = node('div', 'move-scroll'), table = node('table'), head = node('thead'), header = node('tr');
-  const columns = view.role === 'observer' ? ['ply', 'color', 'notation', 'capturedColumn', 'thinkTime'] : ['ply', 'color', 'notation'];
+  const columns = view.role === 'observer' ? ['ply', 'color', 'notation', 'capturedColumn', 'thinkTime'] : ['ply', 'color', 'notation', 'thinkTime'];
   for (const key of columns) header.append(node('th', '', t(key))); head.append(header); table.append(head);
   const body = node('tbody');
   for (const move of view.moves) {
     const row = node('tr'); row.append(node('td', '', String(move.ply)), node('td', '', colorName(move.color)), node('td', 'notation', move.notation));
     row.dataset.ply = move.ply;
-    row.children[2].replaceChildren(button(move.notation, () => { seekReplay(move.ply); }, 'move-replay-link'));
+    if (canReplay(view)) row.children[2].replaceChildren(button(move.notation, () => { seekReplay(move.ply); }, 'move-replay-link'));
     if (move.ply === replayPly) row.classList.add('replay-selected');
-    if (view.role === 'observer') row.append(node('td', '', move.captured ?? '—'), node('td', '', t('seconds', { n: (move.thinkMs / 1000).toFixed(1) })));
+    if (view.role === 'observer') row.append(node('td', '', move.captured ?? '—'));
+    row.append(node('td', 'move-think-time', t('seconds', { n: (move.thinkMs / 1000).toFixed(1) })));
     body.append(row);
   }
   table.append(body); scroll.append(table); panel.append(scroll); return panel;
@@ -298,8 +302,7 @@ function resultPanel() {
 function observerPanel() {
   const panel = node('section', 'panel'), stats = node('div', 'observer-stats');
   const phase = node('div'); phase.append(node('span', 'stat-label', t('phase')), node('span', 'stat-value', t(view.phase === 'ended' ? 'endedPhase' : view.phase)));
-  const think = node('div'); think.append(node('span', 'stat-label', t('thinking')));
-  const timer = node('span', 'stat-value'); timer.id = 'think-timer'; think.append(timer); stats.append(phase, think); panel.append(stats);
+  stats.append(phase); panel.append(stats);
   for (const color of ['w', 'b']) {
     const id = view.crowns?.[color];
     panel.append(node('p', 'small', id ? crownDescription(id) : `${colorName(color)} · ${t('crownUnchosen')}`));
@@ -328,9 +331,19 @@ function playerControls() {
   } else if (view.phase === 'playing') {
     if (view.yourCrown) panel.append(node('p', 'small', t('ownCrown', { piece: pieceName(view.pieces[view.yourCrown]) })));
     const actions = node('div', 'actions');
-    actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || connection !== 'connected', 'draw'));
+    actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
+    actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
     actions.append(button(t('resign'), () => askConfirmation('resignConfirm', () => send({ type: 'resign' })), 'danger quiet-button', connection !== 'connected', 'flag'));
     panel.append(actions);
+    if (view.undoRequest) {
+      const bar = node('div', 'draw-bar'); bar.setAttribute('role', 'status');
+      bar.append(node('p', 'small', t(view.undoRequest.color === view.role ? 'undoSent' : 'undoReceived', { count: view.moves.length - view.undoRequest.targetPly })));
+      if (view.undoRequest.color !== view.role) {
+        const responses = node('div', 'actions');
+        responses.append(button(t('accept'), () => send({ type: 'respond_undo', accept: true }), 'primary', connection !== 'connected', 'check'), button(t('decline'), () => send({ type: 'respond_undo', accept: false }), '', connection !== 'connected', 'close')); bar.append(responses);
+      }
+      panel.append(bar);
+    }
     if (view.drawOffer) {
       const bar = node('div', 'draw-bar'); bar.append(node('p', 'small', t(view.drawOffer === view.role ? 'drawSent' : 'drawReceived')));
       if (view.drawOffer !== view.role) {
@@ -346,6 +359,7 @@ function statusText() {
   if (view.phase === 'lobby') return t('waiting');
   if (view.phase === 'crown_select') return t(view.role === 'observer' ? 'crown_select' : view.crownLocked[view.role] ? 'lockedWaiting' : 'select');
   if (view.phase === 'ended') return t('ended');
+  if (view.undoRequest) return t('undoWaiting');
   if (pending) return t('movePending');
   return view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : view.computer ? 'computerThinking' : 'opponentThinking');
 }
@@ -355,23 +369,26 @@ function replayLabel() {
   return t('replayPosition', { n: replayPly, total: view.moves.length }) + (move ? ` · ${move.notation}` : ` · ${t('initialPosition')}`);
 }
 function seekReplay(ply) {
+  if (!canReplay(view)) return;
   replayPly = ply === null ? null : Math.max(0, Math.min(view.moves.length, Number(ply)));
   selected = null; candidate = null; promotionMoves = null;
   document.querySelector('#promotion').close(); document.querySelector('#confirmation').close();
   confirmationAction = null; confirmationKey = null;
   const position = displayedView(), container = app.querySelector('.game-board');
-  const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' && view.phase === 'playing' && view.turn === view.role;
+  const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && !view.undoRequest && view.role !== 'observer' && view.phase === 'playing' && view.turn === view.role;
   renderBoard(container, position, { selected, candidate, enabled, onSquare }); resetBoardMotion(view);
   app.querySelector('.replay-label').textContent = replayLabel();
   app.querySelector('#replay-range').value = replayPly ?? view.moves.length;
   app.querySelector('.player-controls')?.toggleAttribute('disabled', replayPly !== null);
   app.querySelector('.capture-trays').replaceChildren(trays(position));
   for (const row of app.querySelectorAll('[data-ply]')) row.classList.toggle('replay-selected', Number(row.dataset.ply) === replayPly);
+  followReplayRow(app.querySelector('.move-scroll'), app.querySelector(`[data-ply="${replayPly ?? view.moves.length}"]`));
   for (const button of app.querySelectorAll('[data-replay-direction]')) {
     const step = Number(button.dataset.replayDirection), at = replayPly ?? view.moves.length;
     button.disabled = step < 0 ? at === 0 : at === view.moves.length;
   }
   app.querySelector('.return-live').disabled = replayPly === null;
+  updateTimer();
 }
 function replayControls() {
   const panel = node('section', 'panel replay-panel'); panel.append(node('h2', '', t('replay')));
@@ -400,10 +417,17 @@ function renderGame() {
   if (view.phase === 'ended' && view.result) page.append(resultPanel());
   const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div', 'game-board');
   const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' &&
-    ((view.phase === 'playing' && view.turn === view.role) || (view.phase === 'crown_select' && !view.crownLocked[view.role]));
+    ((view.phase === 'playing' && !view.undoRequest && view.turn === view.role) || (view.phase === 'crown_select' && !view.crownLocked[view.role]));
   renderBoard(boardContainer, displayedView(), { selected, candidate, enabled, onSquare }); boardColumn.append(boardContainer);
   const status = node('div', 'board-status'); status.append(node('span', 'muted', statusText()), presence()); boardColumn.append(status);
-  if (view.moves.length) boardColumn.append(replayControls());
+  const timing = node('div', 'turn-timing'), elapsed = node('div', 'small');
+  elapsed.append(node('span', '', t('turnElapsed') + ' ')); const timer = node('span', 'turn-clock'); timer.id = 'think-timer'; elapsed.append(timer); timing.append(elapsed);
+  if (view.role !== 'observer') {
+    const sound = button(t(turnSound.enabled ? 'soundOn' : 'soundOff'), () => { turnSound.toggle(); render(); }, 'quiet-button sound-toggle', false, turnSound.enabled ? 'sound' : 'muted');
+    sound.setAttribute('aria-pressed', String(turnSound.enabled)); timing.append(sound);
+  }
+  boardColumn.append(timing);
+  if (view.moves.length && canReplay(view)) boardColumn.append(replayControls());
   const sidebar = node('aside', 'sidebar');
   if (view.role === 'observer') sidebar.append(observerPanel());
   else if (view.phase === 'playing' || view.phase === 'crown_select') {
@@ -412,6 +436,7 @@ function renderGame() {
   const captureTrays = node('div', 'capture-trays'); captureTrays.append(trays(displayedView()));
   sidebar.append(captureTrays, moveTable(), rules()); layout.append(boardColumn, sidebar); page.append(layout); app.replaceChildren(page);
   const scroll = app.querySelector('.move-scroll'); if (scroll && scrollPosition !== undefined) scroll.scrollTop = scrollPosition;
+  if (replayPly !== null) followReplayRow(scroll, app.querySelector(`[data-ply="${replayPly}"]`));
   if (replayPly === null) animateBoard(boardContainer.querySelector('.board'), view); else resetBoardMotion(view);
   updateTimer();
 }
@@ -443,7 +468,7 @@ function render() {
   renderGame();
 }
 function onSquare(square) {
-  if (replayPly !== null) return;
+  if (replayPly !== null || view.undoRequest) return;
   if (view.phase === 'crown_select') {
     const piece = view.pieces[view.board[square]];
     candidate = piece?.color === view.role && piece.type !== 'P' && !piece.promoted ? piece.id : null; render(); return;
@@ -480,8 +505,8 @@ languageButton.addEventListener('click', () => {
 });
 function updateTimer() {
   const timer = document.querySelector('#think-timer'); if (!timer || !view) return;
-  const start = view.lastMoveAt ?? view.playStartedAt;
-  if (view.phase !== 'playing' || start === null) timer.textContent = '—';
+  const start = view.turnStartedAt ?? view.lastMoveAt ?? view.playStartedAt;
+  if (view.phase !== 'playing' || start == null || replayPly !== null) timer.textContent = '—';
   else timer.textContent = t('seconds', { n: Math.max(0, (clockAnchor.serverNow + performance.now() - clockAnchor.receivedAt - start) / 1000).toFixed(1) });
 }
 setInterval(updateTimer, 200);
@@ -540,9 +565,12 @@ async function connect() {
       }, 25000);
       if (message.role === 'observer') send({ type: 'get_links' });
     } else if (message.type === 'state') {
-      const oldPly = view?.moves.length, oldPhase = view?.phase;
+      const oldPly = view?.moves.length, oldPhase = view?.phase, oldUndo = view?.undoRequest;
+      if (startsYourTurn(view, message.view)) turnSound.play();
       view = message.view; clockAnchor = { serverNow: view.serverNow, receivedAt: performance.now() };
-      if (oldPly !== view.moves.length || oldPhase !== view.phase) { selected = null; document.querySelector('#promotion').close(); promotionMoves = null; }
+      if (oldPly !== view.moves.length || oldPhase !== view.phase || JSON.stringify(oldUndo) !== JSON.stringify(view.undoRequest)) { selected = null; document.querySelector('#promotion').close(); promotionMoves = null; }
+      if (oldPly > view.moves.length || !canReplay(view)) replayPly = null;
+      if (oldUndo && !view.undoRequest && view.phase === 'playing') notice(oldPly > view.moves.length ? 'undoAccepted' : 'undoDeclined');
       pending = false; lockPending = false; render();
     } else if (message.type === 'pong') lastPong = Date.now();
     else if (message.type === 'links') { observerLinks = message.links; render(); }

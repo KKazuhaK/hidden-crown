@@ -31,6 +31,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: bash -n install.sh
       - run: npm run typecheck && npm test
       - name: SQLite complete runtime checks
         run: npm run test:selfhost
@@ -44,6 +45,12 @@ jobs:
           TEST_DATABASE_URL: ''
       - name: PostgreSQL computer runtime
         run: npm run test:computer
+      - name: SQLite undo runtime
+        run: npm run test:undo
+        env:
+          TEST_DATABASE_URL: ''
+      - name: PostgreSQL undo runtime
+        run: npm run test:undo
       - name: Container runtime and persistent volume
         shell: bash
         run: |
@@ -72,6 +79,7 @@ jobs:
           node scripts/room-smoke.mjs
           node scripts/join-smoke.mjs
           node scripts/computer-smoke.mjs
+          node scripts/undo-smoke.mjs
           node scripts/persistence-smoke.mjs prepare
           docker restart hc-test
           for attempt in $(seq 1 20); do

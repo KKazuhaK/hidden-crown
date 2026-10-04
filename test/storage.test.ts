@@ -55,6 +55,53 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect(result.filter(item => item.status === 'fulfilled')).toHaveLength(1);
     expect((await store.load(game.roomId))!.events).toHaveLength(2);
   });
+  it('atomically rewinds only approved moves, preserves audit and reuses the next ply', async () => {
+    const rules = ruleRegistry.resolve(initial('UNDO0001').ruleset);
+    let game = initial('UNDO0001'); await store.commit(game, [created], 0);
+    async function act(color: 'w' | 'b', value: Parameters<typeof rules.applyCommand>[2], now: number) {
+      const next = rules.applyCommand(game, color, value, now);
+      if ('error' in next) throw new Error(next.error);
+      next.state.revision = game.revision + 1;
+      await store.commit(next.state, next.events, game.revision); game = next.state;
+    }
+    await act('w', { type: 'move', from: 12, to: 28 }, 1000);
+    await act('b', { type: 'move', from: 52, to: 36 }, 2000);
+    const removed = structuredClone(game.moves);
+    await expect(store.commit({ ...game, revision: game.revision + 1, ply: 0, moves: [] }, [], game.revision)).rejects.toThrow('room_history_inconsistent');
+    await act('w', { type: 'request_undo' }, 3000);
+    const accepted = rules.applyCommand(game, 'b', { type: 'respond_undo', accept: true }, 4000);
+    if ('error' in accepted) throw new Error(accepted.error);
+    accepted.state.revision = game.revision + 1;
+    await expect(store.commit(accepted.state, [{ ...accepted.events[0], data: { targetPly: 0, removed: [] } }], game.revision)).rejects.toThrow('room_history_inconsistent');
+    await act('b', { type: 'respond_undo', accept: true }, 4000);
+    const loaded = (await store.load(game.roomId))!;
+    expect(loaded.state.ply).toBe(0); expect(loaded.state.moves).toEqual([]);
+    expect(loaded.events.filter(event => event.type === 'move')).toHaveLength(2);
+    expect(loaded.events.at(-1)?.data?.removed).toEqual(removed);
+    expect(loaded.state.board).toEqual(initial(game.roomId).board);
+    const rows = await database.query('SELECT bytes,history_bytes,state FROM hc_rooms WHERE id=$1', [game.roomId]);
+    expect(Number(rows[0].history_bytes)).toBe(loaded.events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0));
+    expect(Number(rows[0].bytes)).toBe(Number(rows[0].history_bytes) + Buffer.byteLength(String(rows[0].state)));
+    game = loaded.state;
+    await act('w', { type: 'move', from: 11, to: 27 }, 5000);
+    expect((await store.load(game.roomId))!.state.moves[0]).toMatchObject({ ply: 1, from: 11, to: 27, thinkMs: 1000 });
+  });
+  it('rolls back deleted moves too when the undo audit insert fails', async () => {
+    let game = initial('UNDOFAIL'); const rules = ruleRegistry.resolve(game.ruleset);
+    await store.commit(game, [created], 0);
+    const moved = rules.applyCommand(game, 'w', { type: 'move', from: 12, to: 28 }, 1000);
+    if ('error' in moved) throw new Error(moved.error);
+    game = { ...moved.state, revision: 2 }; await store.commit(game, moved.events, 1);
+    const pending = rules.applyCommand(game, 'w', { type: 'request_undo' }, 2000);
+    if ('error' in pending) throw new Error(pending.error);
+    game = { ...pending.state, revision: 3 }; await store.commit(game, pending.events, 2);
+    const accepted = rules.applyCommand(game, 'b', { type: 'respond_undo', accept: true }, 3000);
+    if ('error' in accepted) throw new Error(accepted.error);
+    await database.query('INSERT INTO hc_events VALUES($1,$2,$3,$4)', [game.roomId, 4, 0, JSON.stringify(created)]);
+    await expect(store.commit({ ...accepted.state, revision: 4 }, accepted.events, 3)).rejects.toThrow();
+    const loaded = (await store.load(game.roomId))!.state;
+    expect(loaded.moves).toEqual(game.moves); expect(loaded.undoRequest).toEqual(game.undoRequest); expect(loaded.revision).toBe(3);
+  });
   it('rolls back snapshot changes if appending an event fails', async () => {
     const game = initial('ROLLBACK'); await store.commit(game, [created], 0);
     // Duplicate sequence deliberately exercises a database failure after UPDATE.

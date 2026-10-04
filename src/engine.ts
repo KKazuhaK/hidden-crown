@@ -115,9 +115,9 @@ export function advancePosition(state: GameState, move: Move, now: number): { st
   if (move.promotion) { piece.type = move.promotion; piece.promoted = true; }
   next.enPassant = wasPawn && Math.abs(move.to - move.from) === 16 ? (move.from + move.to) / 2 : null;
   next.halfmoveClock = captured || wasPawn ? 0 : state.halfmoveClock + 1;
-  next.ply++; next.turn = opposite(state.turn); next.lastMoveAt = now; next.drawOffer = null;
+  next.ply++; next.turn = opposite(state.turn); next.lastMoveAt = now; next.turnStartedAt = now; next.drawOffer = null;
   const record: MoveRecord = { ...move, ply: next.ply, color: state.turn, notation, at: now,
-    thinkMs: Math.max(0, now - (state.lastMoveAt ?? state.playStartedAt ?? now)), ...(captured ? { captured } : {}) };
+    thinkMs: Math.max(0, now - (state.turnStartedAt ?? state.lastMoveAt ?? state.playStartedAt ?? now)), ...(captured ? { captured } : {}) };
   next.moves.push(record);
   return { state: next, record };
 }

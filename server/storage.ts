@@ -52,15 +52,31 @@ export class Store {
       if (old && JSON.stringify(JSON.parse(String(old.state)).ruleset.options) !== JSON.stringify(state.ruleset.options)) throw new Error('room_ruleset_immutable');
       if (old && JSON.stringify(JSON.parse(String(old.state)).computer) !== JSON.stringify(state.computer)) throw new Error('room_computer_immutable');
       const previousPly = Number(old?.ply ?? 0), previousEvents = Number(old?.event_count ?? 0);
-      if (state.ply < previousPly || state.ply !== moves.length || state.ply > previousPly + 64 || events.length > 64) throw new Error('room_history_inconsistent');
-      const appended = moves.slice(previousPly).map(move => ({ value: move, data: JSON.stringify(move) }));
-      if (appended.some((row, index) => row.value.ply !== previousPly + index + 1)) throw new Error('room_history_inconsistent');
+      if (state.ply !== moves.length || state.ply > previousPly + 64 || events.length > 64) throw new Error('room_history_inconsistent');
+      let removedBytes = 0;
+      const rewind = state.ply < previousPly;
+      if (rewind) {
+        const prior = JSON.parse(String(old!.state)) as GameState, request = prior.undoRequest, accepted = events[0];
+        if (prior.phase !== 'playing' || state.phase !== 'playing' || !request || state.undoRequest || events.length !== 1 ||
+            accepted.type !== 'undo_accepted' || accepted.actor !== (request.color === 'w' ? 'b' : 'w') ||
+            request.targetPly !== state.ply || accepted.data?.targetPly !== state.ply || previousPly - state.ply > 2)
+          throw new Error('room_history_inconsistent');
+        const history = await tx.query('SELECT data FROM hc_moves WHERE room_id=$1 ORDER BY ply', [state.roomId]);
+        if (JSON.stringify(history.slice(0, state.ply).map(row => JSON.parse(String(row.data)))) !== JSON.stringify(moves) ||
+            JSON.stringify(history.slice(state.ply).map(row => JSON.parse(String(row.data)))) !== JSON.stringify(accepted.data?.removed))
+          throw new Error('room_history_inconsistent');
+        removedBytes = history.slice(state.ply).reduce((total, row) => total + Buffer.byteLength(String(row.data)), 0);
+      }
+      const basePly = rewind ? state.ply : previousPly;
+      const appended = moves.slice(basePly).map(move => ({ value: move, data: JSON.stringify(move) }));
+      if (appended.some((row, index) => row.value.ply !== basePly + index + 1)) throw new Error('room_history_inconsistent');
       const addedEvents = events.map(value => ({ value, data: encodeEvent(value) }));
-      const historyBytes = Number(old?.history_bytes ?? 0) + [...appended, ...addedEvents].reduce((total, row) => total + Buffer.byteLength(row.data), 0);
+      const historyBytes = Number(old?.history_bytes ?? 0) - removedBytes + [...appended, ...addedEvents].reduce((total, row) => total + Buffer.byteLength(row.data), 0);
       const bytes = snapshotBytes + historyBytes;
       if (bytes > this.maxRoomBytes) throw new Error('room_storage_limit');
       validate?.(bytes);
       const values = [json, state.revision, state.createdAt, state.phase, state.ply, bytes, historyBytes, previousEvents + events.length, state.ruleset.id, state.ruleset.version, state.roomId, state.computer?.color ?? null, state.computer?.difficulty ?? null];
+      if (rewind) await tx.query('DELETE FROM hc_moves WHERE room_id=$1 AND ply>$2', [state.roomId, state.ply]);
       if (old) await tx.query('UPDATE hc_rooms SET state=$1,revision=$2,created_at=$3,phase=$4,ply=$5,bytes=$6,history_bytes=$7,event_count=$8,ruleset_id=$9,ruleset_version=$10,computer_color=$12,computer_difficulty=$13 WHERE id=$11', values);
       else await tx.query('INSERT INTO hc_rooms(state,revision,created_at,phase,ply,bytes,history_bytes,event_count,ruleset_id,ruleset_version,id,computer_color,computer_difficulty) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', values);
       for (const move of appended) await tx.query('INSERT INTO hc_moves VALUES($1,$2,$3,$4)', [state.roomId, move.value.ply, move.value.at, move.data]);

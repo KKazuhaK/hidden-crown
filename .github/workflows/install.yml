@@ -1,0 +1,47 @@
+name: Installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate standalone PostgreSQL template
+        shell: bash
+        env:
+          PUBLIC_ORIGIN: https://chess.example.com
+          ADMIN_PASSWORD: isolated-template-test-password
+          DATABASE_URL: postgresql://example:example@host.docker.internal:5432/hidden_crown
+        run: docker compose -f docker-compose.postgres.yml config --quiet
+      - name: First installation and bind directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n install.sh
+          sudo bash install.sh https://chess.example.com
+          sudo test -s /opt/hidden-crown/data/hidden-crown-v2.sqlite
+          test "$(sudo stat -c '%u:%g' /opt/hidden-crown/data/hidden-crown-v2.sqlite)" = '1000:1000'
+          test "$(sudo stat -c '%a' /opt/hidden-crown/.env)" = 600
+          sudo docker compose --project-directory /opt/hidden-crown restart
+          for attempt in $(seq 1 30); do
+            if curl -fsS -H 'Host: chess.example.com' http://127.0.0.1:8787/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS -H 'Host: chess.example.com' http://127.0.0.1:8787/healthz
+          sudo bash -c 'set -eu; cd /opt/hidden-crown; source .env; jq -n --arg username "$ADMIN_USERNAME" --arg password "$ADMIN_PASSWORD" "{username: \$username, password: \$password}" | curl -fsS -H "Host: chess.example.com" -H "Origin: https://chess.example.com" -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:8787/api/admin/login | jq -e ".csrf | length > 0"'
+      - name: Refuse to overwrite an existing deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(sudo sha256sum /opt/hidden-crown/.env)
+          if sudo bash install.sh https://chess.example.com; then
+            echo 'Installer must refuse to overwrite an existing deployment'; exit 1
+          fi
+          test "$before" = "$(sudo sha256sum /opt/hidden-crown/.env)"
