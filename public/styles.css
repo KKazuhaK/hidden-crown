@@ -120,6 +120,8 @@ h3 { font-size:14px; font-weight:600; }
 .crown-badge.crown-b { background:#425345; color:#f9d670; }
 .crown-badge { display:flex; align-items:center; justify-content:center; }
 .crown-badge svg { width:80%; height:80%; }
+.interrogation-clear-badge { position:absolute; top:3px; right:3px; display:flex; align-items:center; justify-content:center; width:19px; height:19px; border:1px solid #536b5a; border-radius:50%; background:#eef2e8; color:#375e4b; font:600 18px/1 system-ui,sans-serif; z-index:3; }
+.interrogation-legend { margin:0 0 12px; }
 .target { position:absolute; z-index:2; pointer-events:none; }
 .quiet-target { width:22%; height:22%; border-radius:50%; background:#26392c55; }
 .capture-target { width:90%; height:90%; border:4px solid #374c3c88; border-radius:50%; }
@@ -143,6 +145,7 @@ h3 { font-size:14px; font-weight:600; }
 .captured-piece { position:relative; display:inline-flex; align-items:center; width:32px; height:33px; }
 .captured-piece .piece { width:32px; height:33px; }
 .captured-piece .crown-badge { width:14px; height:14px; font-size:10px; line-height:13px; right:-1px; top:-2px; }
+.captured-piece .interrogation-clear-badge { width:14px; height:14px; font-size:13px; right:-1px; top:-2px; }
 .move-scroll { max-height:345px; overflow:auto; }
 table { border-collapse:collapse; width:100%; font-size:12px; }
 th { text-align:left; font-weight:550; color:var(--muted); padding:8px 5px; border-bottom:1px solid var(--line); background:var(--surface); position:sticky; top:0; white-space:nowrap; }

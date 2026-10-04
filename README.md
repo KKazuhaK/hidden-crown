@@ -46,13 +46,13 @@ The seven-ply smoke game: White crowns `wQ`, Black crowns `bBf`; play `e2-e4`, `
 
 New rooms use `hidden-crown@3`. Pick a crown from the seven original pieces: queen, two rooks, two bishops or two knights. The king cannot be crowned. Each side may spend two whole turns interrogating with its surviving king. Targets must be original enemy crown candidates on the same rank, file or diagonal; blockers do not matter. Pawns, kings, promoted pieces, captured pieces and targets already interrogated by that side are excluded. Capturing a king does not end the game, but removes that side's interrogation ability.
 
-An interrogation consumes a turn without moving or capturing. Only its actor receives the answer; opponents see the king and target, and authenticated administrator observers receive every answer. Identifying a crown does not win. Player state frames never contain the opponent’s interrogation answers, even after the game ends. JSON/CSV administrator exports include action type, target ID/square, answer and thinking time. Notation identifies the king, for example `Ke2 ? bQ@e7`. Replays include interrogation turns without changing the board or castling rights.
+An interrogation consumes a turn without moving or capturing. Only its actor receives the answer; opponents see the king and target, and authenticated administrator observers receive every answer. Identifying a crown does not win. Player state frames never contain the opponent’s interrogation answers, even after the game ends. JSON/CSV administrator exports include action type, target ID/square, answer and thinking time. Notation identifies the king, for example `Ke2 ? bQ@e7`. Replays include interrogation turns without changing the board or castling rights. Known answers stay marked on the piece: × means not the crown, and a crown badge means confirmed. Marks follow movement, remain in captured-piece trays, survive reconnects and rewind with replay; the opponent cannot see your private marks.
 
 Interrogations expire en passant, clear draw offers and count as non-capture, non-pawn turns for the existing draw limit. No-action draws require that neither a move nor interrogation is available. Undo may withdraw ordinary moves after the latest interrogation, but cannot withdraw or cross an interrogation because knowledge cannot be revoked. Computer opponents use only their own interrogation results.
 
 Existing `hidden-crown@1` and `hidden-crown@2` rooms retain their original rules and matching UI text, without a schema migration or database reset. New rooms use the corrected king-interrogation rules.
 
-新房间使用 `hidden-crown@3`：后、双车、双象、双马可成为王冠，王不能加冕。只有王能审问，每局两次，消耗整个回合，可穿透棋子审问同横线、竖线或斜线上的对方候选。王被吃掉后对局继续，但该方无法再审问。规则、提示、操作、观察者界面、记录和导出均同步中英文。审问答案只属于发起方和管理员观察者，发现王冠后仍需吃掉它。审问无法悔棋，后续普通走棋仍可申请悔棋。已有 v1、v2 房间沿用创建时的规则，无需清空数据库。
+新房间使用 `hidden-crown@3`：后、双车、双象、双马可成为王冠，王不能加冕。只有王能审问，每局两次，消耗整个回合，可穿透棋子审问同横线、竖线或斜线上的对方候选。王被吃掉后对局继续，但该方无法再审问。规则、提示、操作、观察者界面、记录和导出均同步中英文。审问答案只属于发起方和管理员观察者，发现王冠后仍需吃掉它。审问结果会持续标在棋子上：× 表示不是王冠，王冠图标表示已确认。标记跟随棋子移动，被吃后保留在棋子栏，重连后恢复，回放时随进度显示；对手看不到你的私有标记。审问无法悔棋，后续普通走棋仍可申请悔棋。已有 v1、v2 房间沿用创建时的规则，无需清空数据库。
 
 ## Human vs computer (2.1)
 

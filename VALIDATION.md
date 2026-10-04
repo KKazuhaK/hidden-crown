@@ -124,3 +124,7 @@ Actual HTTP/WebSocket SQLite suites pass: self-host 163 assertions, computer 122
 Browser checks verify that clicking e1 does not enable crown locking while clicking d1 selects the queen; English and Chinese selection/rules agree. A king on e2 successfully interrogated the enemy queen on e7 through intervening pawns, consumed its turn, and produced `king: interrogate queen at e7` / `王审问 e7 的后` with the private positive answer. No browser console errors were observed.
 
 Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and PostgreSQL, plus native amd64/arm64 container, Compose, persistence, limits and capacity checks. Interrogation smoke coverage is part of both backend jobs and the container job.
+
+## 2.3.2 persistent interrogation marks — 2026-10-04
+
+89 unit tests pass. Marker knowledge is derived from recipient-visible records by piece ID, filters answers by player role, and uses the displayed replay prefix. Coverage checks separate player/observer knowledge, absent answers, moving and captured pieces, and rewinding before interrogation. Browser verification confirms a clear answer adds a × badge, retains it after reconnect, follows the queen from e7 to f6, and never appears in the opponent view. Both English and Chinese descriptions and tooltips are present. The 2.3.1 correction passed main and Release CI on SQLite/PostgreSQL and native AMD64/ARM64 before this UI follow-up.

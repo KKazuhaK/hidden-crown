@@ -1,5 +1,5 @@
 import { t, language, toggleLanguage, colorName, pieceName } from './i18n.js';
-import { renderBoard, squareName, crownBadge, canCrown } from './board.js';
+import { renderBoard, squareName, crownBadge, canCrown, interrogationKnowledge, interrogationBadge } from './board.js';
 import { withIcon } from './icons.js';
 import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
@@ -253,13 +253,17 @@ function presence() {
 function trays(position = view) {
   const panel = node('section', 'panel'); panel.append(node('h2', '', t('captured')));
   const crowns = position.crowns ? Object.values(position.crowns).filter(Boolean) : [position.yourCrown].filter(Boolean);
+  const knowledge = interrogationKnowledge(position);
   for (const color of ['w', 'b']) {
     const tray = node('div', 'tray'); tray.append(node('div', 'tray-label', t(color === 'w' ? 'capturedWhite' : 'capturedBlack')));
     const pieces = node('div', 'tray-pieces');
     for (const piece of Object.values(position.pieces).filter(p => p.color === color && p.square === null)) {
       const wrap = node('span', 'captured-piece'); wrap.title = pieceName(piece);
       wrap.append(pieceGraphic(piece));
-      if (crowns.includes(piece.id)) wrap.append(crownBadge(color)); pieces.append(wrap);
+      if (crowns.includes(piece.id)) wrap.append(crownBadge(color));
+      else if (knowledge[piece.id]) wrap.append(interrogationBadge(knowledge[piece.id], color));
+      if (knowledge[piece.id]) wrap.title += ` · ${t(`interrogation_${knowledge[piece.id]}`)}`;
+      pieces.append(wrap);
     }
     if (!pieces.childNodes.length) pieces.append(node('span', 'small', t('none')));
     tray.append(pieces); panel.append(tray);
@@ -397,6 +401,7 @@ function seekReplay(ply) {
   const position = displayedView(), container = app.querySelector('.game-board');
   const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && !view.undoRequest && view.role !== 'observer' && view.phase === 'playing' && view.turn === view.role;
   renderBoard(container, position, { selected, candidate, enabled, onSquare }); resetBoardMotion(view);
+  app.querySelector('.interrogation-legend').hidden = !Object.keys(interrogationKnowledge(position)).length;
   app.querySelector('.replay-label').textContent = replayLabel();
   app.querySelector('#replay-range').value = replayPly ?? view.moves.length;
   app.querySelector('.player-controls')?.toggleAttribute('disabled', replayPly !== null);
@@ -440,6 +445,8 @@ function renderGame() {
     ((view.phase === 'playing' && !view.undoRequest && view.turn === view.role) || (view.phase === 'crown_select' && !view.crownLocked[view.role]));
   renderBoard(boardContainer, displayedView(), { selected, candidate, enabled, onSquare, interrogating }); boardColumn.append(boardContainer);
   const status = node('div', 'board-status'); status.append(node('span', 'muted', statusText()), presence()); boardColumn.append(status);
+  const legend = node('p', 'small interrogation-legend', t('interrogationMarks'));
+  legend.hidden = !Object.keys(interrogationKnowledge(displayedView())).length; boardColumn.append(legend);
   const timing = node('div', 'turn-timing'), elapsed = node('div', 'small');
   elapsed.append(node('span', '', t('turnElapsed') + ' ')); const timer = node('span', 'turn-clock'); timer.id = 'think-timer'; elapsed.append(timer); timing.append(elapsed);
   if (view.role !== 'observer') {

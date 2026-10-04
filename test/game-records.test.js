@@ -4,10 +4,10 @@ import { replayAt } from '../public/js/replay.js';
 import { initialPosition } from '../src/engine';
 import { crownCandidate } from '../src/rules/hidden-crown';
 
-let canCrown, i18n;
+let canCrown, interrogationKnowledge, i18n;
 beforeAll(async () => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
-  ({ canCrown } = await import('../public/js/board.js'));
+  ({ canCrown, interrogationKnowledge } = await import('../public/js/board.js'));
   i18n = await import('../public/js/i18n.js');
 });
 describe('interrogations in exports and replay', () => {
@@ -54,5 +54,23 @@ describe('interrogations in exports and replay', () => {
     const after = replayAt(view, 1);
     expect(after.board).toEqual(position.board); expect(after.pieces).toEqual(position.pieces); expect(after.turn).toBe('b');
     expect(replayAt(view, 2).board[36]).toBe('bPe'); expect(replayAt(view, 2).board[4]).toBe('wK');
+  });
+  it('marks only the requesting player’s known answers, while observers see both sides', () => {
+    const other = { ...record, color: 'b', targetId: 'wQ', answer: 'crown' };
+    const hidden = { ...record, targetId: 'bRa', answer: undefined };
+    expect(interrogationKnowledge({ role: 'w', moves: [record, other, hidden] })).toEqual({ bBc: 'clear' });
+    expect(interrogationKnowledge({ role: 'b', moves: [record, other, hidden] })).toEqual({ wQ: 'crown' });
+    expect(interrogationKnowledge({ role: 'observer', moves: [record, other, hidden] })).toEqual({ bBc: 'clear', wQ: 'crown' });
+  });
+  it('keeps marks attached to piece IDs after movement or capture and rewinds them with replay', () => {
+    const position = initialPosition();
+    const moves = [record, { ply: 2, pieceId: 'bBc', from: 58, to: 40, color: 'b' }, { ply: 3, pieceId: 'wQ', from: 3, to: 40, color: 'w', captured: 'bBc' }];
+    const view = { ...position, initialPosition: position, role: 'w', moves };
+    expect(interrogationKnowledge(replayAt(view, 0))).toEqual({});
+    expect(interrogationKnowledge(replayAt(view, 1))).toEqual({ bBc: 'clear' });
+    expect(replayAt(view, 2).pieces.bBc.square).toBe(40);
+    expect(interrogationKnowledge(replayAt(view, 2))).toEqual({ bBc: 'clear' });
+    expect(replayAt(view, 3).pieces.bBc.square).toBeNull();
+    expect(interrogationKnowledge(replayAt(view, 3))).toEqual({ bBc: 'clear' });
   });
 });
