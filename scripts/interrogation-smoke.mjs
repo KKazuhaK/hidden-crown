@@ -64,23 +64,23 @@ try {
   const state = predicate => f => f.type === 'state' && predicate(f.view);
   const error = code => f => f.type === 'error' && f.code === code;
   await white.wait(state(v => v.phase === 'crown_select'));
-  await white.action({ type: 'select_crown', pieceId: 'wQ' }, error('invalid_crown')); checks++;
-  await black.action({ type: 'select_crown', pieceId: 'bQ' }, error('invalid_crown')); checks++;
-  await white.action({ type: 'select_crown', pieceId: 'wK' }, state(v => v.crownLocked.w));
+  await white.action({ type: 'select_crown', pieceId: 'wK' }, error('invalid_crown')); checks++;
+  await black.action({ type: 'select_crown', pieceId: 'bK' }, error('invalid_crown')); checks++;
+  await white.action({ type: 'select_crown', pieceId: 'wQ' }, state(v => v.crownLocked.w));
   await black.action({ type: 'select_crown', pieceId: 'bBc' }, state(v => v.phase === 'playing'));
-  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 2);
+  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 3);
   let ply = 0;
   async function move(client, from, to) { ply++; await client.action({ type: 'move', from, to }, state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply)); }
-  // e2-e4, a7-a6, Qd1-h5, a6-a5. h5-c8 is NOT aligned; h5-e8 is.
+  // e2-e4, e7-e5, Ke1-e2, Qd8-e7. King e2 sees queen e7 through pieces.
   await move(white, 12, 28); await black.wait(state(v => v.moves.length === 1));
-  await move(black, 48, 40); await white.wait(state(v => v.moves.length === 2));
-  await move(white, 3, 39); await black.wait(state(v => v.moves.length === 3));
-  await move(black, 40, 32); await white.wait(state(v => v.moves.length === 4));
-  check(white.view.interrogationTargets.includes('bK'));
-  await white.action({ type: 'interrogate', targetId: 'bK', answer: 'crown' }, error('bad_message')); checks++;
+  await move(black, 52, 36); await white.wait(state(v => v.moves.length === 2));
+  await move(white, 4, 12); await black.wait(state(v => v.moves.length === 3));
+  await move(black, 59, 52); await white.wait(state(v => v.moves.length === 4));
+  check(white.view.interrogationTargets.includes('bQ'));
+  await white.action({ type: 'interrogate', targetId: 'bQ', answer: 'crown' }, error('bad_message')); checks++;
   const beforeBoard = [...white.view.board];
   ply++;
-  await white.action({ type: 'interrogate', targetId: 'bK' }, state(v => v.moves.length === ply));
+  await white.action({ type: 'interrogate', targetId: 'bQ' }, state(v => v.moves.length === ply));
   await black.wait(state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply));
   equal(white.view.board, beforeBoard); equal(white.view.turn, 'b'); equal(white.view.phase, 'playing');
   equal(white.view.moves.at(-1).answer, 'clear'); equal(god.view.moves.at(-1).answer, 'clear');
@@ -88,34 +88,51 @@ try {
   equal(white.view.canRequestUndo, false); equal(black.view.canRequestUndo, false);
   await white.action({ type: 'move', from: 28, to: 36 }, error('not_your_turn')); checks++;
   await white.action({ type: 'request_undo' }, error('undo_unavailable')); checks++;
-  await god.action({ type: 'interrogate', targetId: 'bK' }, error('player_only')); checks++;
+  await god.action({ type: 'interrogate', targetId: 'bQ' }, error('player_only')); checks++;
   await black.action({ type: 'get_log' }, error('observer_only')); checks++;
   const log = await request(`/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth);
-  equal(log.data.moves.at(-1).answer, 'clear'); equal(log.data.events.find(e => e.type === 'interrogation').data.targetId, 'bK');
+  equal(log.data.moves.at(-1).answer, 'clear'); equal(log.data.events.find(e => e.type === 'interrogation').data.targetId, 'bQ');
   if (!external) {
   for (const socket of sockets) socket.close(); await pause(150); await stop(); await start();
     white = await connect({ ...room, link: room.links.white }); black = await connect({ ...room, link: room.links.black }); god = await connect(room, true);
     equal(white.view.moves.at(-1).answer, 'clear'); check(!Object.hasOwn(black.view.moves.at(-1), 'answer'));
     equal(white.view.interrogationsRemaining.w, 1);
   }
-  await move(black, 49, 41); await white.wait(state(v => v.moves.length === 6));
-  check(!white.view.interrogationTargets.includes('bK'));
-  await white.action({ type: 'interrogate', targetId: 'bK' }, error('invalid_interrogation')); checks++;
-  // Qh5-f5 aligns with Bc8 through e6 and d7, then interrogates the chosen original bishop.
-  await move(white, 39, 37); await black.wait(state(v => v.moves.length === 7));
-  await move(black, 41, 33); await white.wait(state(v => v.moves.length === 8));
+  await move(black, 48, 40); await white.wait(state(v => v.moves.length === ply));
+  check(!white.view.interrogationTargets.includes('bQ'));
+  await white.action({ type: 'interrogate', targetId: 'bQ' }, error('invalid_interrogation')); checks++;
+  // Ke2-f3-g4-f5 sees Bc8 through e6 and d7, then interrogates the chosen bishop.
+  for (const [from, to, pawnFrom, pawnTo] of [[12, 21, 40, 32], [21, 30, 49, 41], [30, 37, 41, 33]]) {
+    await move(white, from, to); await black.wait(state(v => v.moves.length === ply));
+    await move(black, pawnFrom, pawnTo); await white.wait(state(v => v.moves.length === ply));
+  }
   check(white.view.interrogationTargets.includes('bBc'));
   ply++; await white.action({ type: 'interrogate', targetId: 'bBc' }, state(v => v.moves.length === ply));
-  await black.wait(state(v => v.moves.length === 9)); await god.wait(state(v => v.moves.length === 9));
+  await black.wait(state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply));
   equal(white.view.moves.at(-1).answer, 'crown'); equal(god.view.moves.at(-1).answer, 'crown');
+  equal(white.view.moves.at(-1).pieceId, 'wK'); equal(white.view.moves.at(-1).notation, 'Kf5 ? bBc@c8');
   check(!Object.hasOwn(black.view.moves.at(-1), 'answer')); equal(white.view.interrogationsRemaining.w, 0); equal(white.view.phase, 'playing');
-  await move(black, 50, 42); await white.wait(state(v => v.moves.length === 10));
+  await move(black, 50, 42); await white.wait(state(v => v.moves.length === ply));
   equal(white.view.interrogationTargets, []);
-  await white.action({ type: 'interrogate', targetId: 'bK' }, error('invalid_interrogation')); checks++;
-  // The black pawn on d7 blocks a queen capture of the identified bishop; no win on interrogation.
+  await white.action({ type: 'interrogate', targetId: 'bQ' }, error('invalid_interrogation')); checks++;
+  // Identifying the crowned bishop does not capture it or win the game.
   await white.action({ type: 'resign' }, state(v => v.phase === 'ended')); await black.wait(state(v => v.phase === 'ended'));
   check(white.view.moves.filter(m => m.kind === 'interrogation').every(m => m.answer));
   check(black.view.moves.filter(m => m.kind === 'interrogation').every(m => !Object.hasOwn(m, 'answer')));
+  const second = await request('/api/rooms', 'POST'); equal(second.status, 201); ids.push(second.data.roomId);
+  white = await connect({ ...second.data, link: second.data.links.white }); black = await connect({ ...second.data, link: second.data.links.black }); god = await connect(second.data, true);
+  await white.wait(state(v => v.phase === 'crown_select'));
+  await white.action({ type: 'select_crown', pieceId: 'wQ' }, state(v => v.crownLocked.w));
+  await black.action({ type: 'select_crown', pieceId: 'bQ' }, state(v => v.phase === 'playing'));
+  await white.wait(state(v => v.phase === 'playing')); ply = 0;
+  for (const [side, from, to] of [['w',12,28], ['b',52,36], ['w',4,12], ['b',59,31], ['w',12,20], ['b',31,28], ['w',20,29], ['b',28,29]]) {
+    await move(side === 'w' ? white : black, from, to);
+    await (side === 'w' ? black : white).wait(state(v => v.moves.length === ply));
+  }
+  equal(white.view.pieces.wK.square, null); equal(white.view.phase, 'playing'); equal(white.view.result, null);
+  equal(white.view.interrogationTargets, []); equal(white.view.interrogationsRemaining.w, 2);
+  await white.action({ type: 'interrogate', targetId: 'bQ' }, error('invalid_interrogation')); checks++;
+  await move(white, 6, 21); await black.wait(state(v => v.moves.length === ply)); equal(white.view.phase, 'playing');
   console.log(`Interrogation runtime passed: ${checks} assertions; ${external ? 'container' : adminDb ? 'PostgreSQL' : 'SQLite'}`);
 } finally {
   for (const socket of sockets) socket.close();

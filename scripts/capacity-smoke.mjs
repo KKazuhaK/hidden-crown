@@ -37,7 +37,7 @@ try{
   const games=await Promise.all(rooms.map(async(room,i)=>{
     const white=await connect(room,'white',`198.18.1.${i*2+1}`),black=await connect(room,'black',`198.18.1.${i*2+2}`);
     await wait(()=>white.view.phase==='crown_select'&&black.view.phase==='crown_select','selection');
-    white.ws.send(JSON.stringify({type:'select_crown',pieceId:'wK'}));black.ws.send(JSON.stringify({type:'select_crown',pieceId:'bK'}));
+    white.ws.send(JSON.stringify({type:'select_crown',pieceId:'wQ'}));black.ws.send(JSON.stringify({type:'select_crown',pieceId:'bQ'}));
     await wait(()=>white.view.phase==='playing'&&black.view.phase==='playing','start');
     return {white,black};
   }));

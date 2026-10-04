@@ -34,8 +34,8 @@ try {
     assert.equal((await fetch(`${base}/api/rooms/${reserved.roomId}/join`, { method: 'POST', body: JSON.stringify({ color: 'w' }) })).status, 200);
     const playing = await create(); const white = await connect(playing, 'white'), black = await connect(playing, 'black');
     await white.wait(frame => frame.type === 'state' && frame.view.phase === 'crown_select');
-    await white.action({ type: 'select_crown', pieceId: 'wK' }, frame => frame.type === 'state' && frame.view.crownLocked.w);
-    await black.action({ type: 'select_crown', pieceId: 'bK' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
+    await white.action({ type: 'select_crown', pieceId: 'wQ' }, frame => frame.type === 'state' && frame.view.crownLocked.w);
+    await black.action({ type: 'select_crown', pieceId: 'bQ' }, frame => frame.type === 'state' && frame.view.phase === 'playing');
     await white.wait(frame => frame.type === 'state' && frame.view.phase === 'playing');
     const state = await white.action({ type: 'move', from: 12, to: 28 }, frame => frame.type === 'state' && frame.view.moves.length === 1);
     await mkdir(new URL('../test-artifacts/', import.meta.url), { recursive: true });
@@ -60,7 +60,7 @@ try {
     assert.equal(observer.view.phase, 'playing');
     assert.equal(observer.view.board[28], 'wPe');
     assert.equal(observer.view.turn, 'b');
-    assert.deepEqual(observer.view.crowns, { w: 'wK', b: 'bK' });
+    assert.deepEqual(observer.view.crowns, { w: 'wQ', b: 'bQ' });
     assert.deepEqual(observer.view.moves, [fixture.record]);
     assert.deepEqual(observer.view.connected, { w: false, b: false });
     const log = await observer.action({ type: 'get_log' }, frame => frame.type === 'log');

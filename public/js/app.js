@@ -1,5 +1,5 @@
 import { t, language, toggleLanguage, colorName, pieceName } from './i18n.js';
-import { renderBoard, squareName, crownBadge } from './board.js';
+import { renderBoard, squareName, crownBadge, canCrown } from './board.js';
 import { withIcon } from './icons.js';
 import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
@@ -52,7 +52,7 @@ function button(label, action, className = '', disabled = false, icon = '') {
 }
 function notice(key, values = {}) {
   noticeKey = key; noticeValues = values;
-  const element = document.querySelector('#notice'); element.textContent = t(key, values); element.hidden = false;
+  const element = document.querySelector('#notice'); element.textContent = ruleText(key, values); element.hidden = false;
   clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { element.hidden = true; }, 4000);
 }
 function askConfirmation(key, action) {
@@ -82,12 +82,19 @@ function send(message) {
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
+function ruleText(key, values = {}) {
+  const version = view?.ruleset?.version ?? 3;
+  if (version === 1 && ['rule1', 'selectHelp'].includes(key)) key = key === 'rule1' ? 'legacyRule1' : 'legacySelectHelp';
+  else if (version === 2 && ['rule1', 'rule7', 'selectHelp', 'interrogateHelp', 'error_invalid_interrogation'].includes(key)) key = `queen_${key}`;
+  if (version < 3 && key === 'rule3') key = 'legacyRule3';
+  return t(key, values);
+}
 function rules(open = rulesOpen) {
   const details = node('details', 'panel'); details.open = open;
   details.append(node('summary', '', t('rules')));
   const options = view?.ruleset?.options ?? { castling: true, enPassant: true, drawPlyLimit: 100 };
   const legacy = view?.ruleset?.version === 1;
-  const list = node('ol'); for (let i = 1; i <= (legacy ? 5 : 8); i++) list.append(node('li', '', i === 1 && legacy ? t('legacyRule1') : i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : t(`rule${i}`, { plies: options.drawPlyLimit })));
+  const list = node('ol'); for (let i = 1; i <= (legacy ? 5 : 8); i++) list.append(node('li', '', i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : ruleText(`rule${i}`, { plies: options.drawPlyLimit })));
   details.append(list); details.addEventListener('toggle', () => { rulesOpen = details.open; }); return details;
 }
 function openRulesDialog() {
@@ -329,7 +336,7 @@ function playerControls() {
     panel.append(node('h2', '', t('select')));
     if (view.crownLocked[view.role]) panel.append(node('p', 'small', t('lockedWaiting')));
     else {
-      panel.append(node('p', 'small', t(view.ruleset.version === 1 ? 'legacySelectHelp' : 'selectHelp')), node('p', 'selection-status', candidate ? t('selectedCrown', { piece: pieceName(view.pieces[candidate]) }) : ''));
+      panel.append(node('p', 'small', ruleText('selectHelp')), node('p', 'selection-status', candidate ? t('selectedCrown', { piece: pieceName(view.pieces[candidate]) }) : ''));
       panel.append(button(t('lock'), () => {
         if (candidate) askConfirmation('lockConfirm', () => { lockPending = send({ type: 'select_crown', pieceId: candidate }); render(); });
       }, 'primary', !candidate || lockPending || connection !== 'connected', 'lock'));
@@ -340,8 +347,9 @@ function playerControls() {
     if (view.interrogationsRemaining) {
       panel.append(node('p', 'small', t('interrogationsLeft', { n: view.interrogationsRemaining[view.role] })));
       const control = button(t(interrogating ? 'cancelInterrogation' : 'interrogate'), () => { interrogating = !interrogating; selected = null; render(); }, interrogating ? 'primary' : '', pending || !(view.interrogationTargets?.length) || connection !== 'connected', 'eye');
-      control.setAttribute('aria-pressed', String(interrogating)); actions.append(control);
-      if (interrogating) panel.append(node('p', 'small', t('interrogateHelp')));
+      control.setAttribute('aria-pressed', String(interrogating)); control.title = ruleText('interrogateHelp'); actions.append(control);
+      if (view.ruleset.version >= 3 && view.pieces[view.role + 'K']?.square === null) panel.append(node('p', 'small', t('kingCapturedInterrogation')));
+      if (interrogating) panel.append(node('p', 'small', ruleText('interrogateHelp')));
     }
     actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
     actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
@@ -483,7 +491,7 @@ function onSquare(square) {
   if (replayPly !== null || view.undoRequest) return;
   if (view.phase === 'crown_select') {
     const piece = view.pieces[view.board[square]];
-    candidate = piece?.color === view.role && piece.type !== 'P' && (view.ruleset.version === 1 || piece.type !== 'Q') && !piece.promoted ? piece.id : null; render(); return;
+    candidate = piece?.color === view.role && canCrown(piece, view.ruleset.version) ? piece.id : null; render(); return;
   }
   if (interrogating) {
     const targetId = view.board[square];
@@ -518,7 +526,7 @@ languageButton.addEventListener('click', () => {
   if (promotionMoves && document.querySelector('#promotion').open) {
     document.querySelector('#promotion').close(); openPromotion(promotionMoves);
   }
-  const message = document.querySelector('#notice'); if (noticeKey && !message.hidden) message.textContent = t(noticeKey, noticeValues);
+  const message = document.querySelector('#notice'); if (noticeKey && !message.hidden) message.textContent = ruleText(noticeKey, noticeValues);
 });
 function updateTimer() {
   const timer = document.querySelector('#think-timer'); if (!timer || !view) return;

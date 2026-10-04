@@ -14,7 +14,7 @@ function initial(id: string): GameState {
   const ruleset = ruleRegistry.selection(), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
   return { ...position, revision: 1, ruleset, initialPosition: structuredClone(position), roomId: id, createdAt: Date.now(), phase: 'playing', moves: [], drawOffer: null,
     joined: { w: true, b: true }, claimed: { w: true, b: true }, playStartedAt: 0, lastMoveAt: null, result: null,
-    crowns: { w: 'wK', b: 'bK' }, tokens: { w: 'secret-white', b: 'secret-black', observer: 'secret-admin' } };
+    crowns: { w: 'wQ', b: 'bQ' }, tokens: { w: 'secret-white', b: 'secret-black', observer: 'secret-admin' } };
 }
 const created: LogEvent = { t: 0, actor: 'system', type: 'room_created' };
 const kinds = process.env.TEST_DATABASE_URL ? ['sqlite', 'postgres'] : ['sqlite'];
@@ -50,7 +50,7 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
   });
   it('persists private interrogation answers and quotas across loading and later undo', async () => {
     let game = initial('INTRDB01');
-    const queen = game.pieces.wQ; game.board[queen.square!] = null; queen.square = 19; game.board[19] = queen.id;
+    const king = game.pieces.wK; game.board[king.square!] = null; king.square = 19; game.board[19] = king.id;
     const target = game.pieces.bRa; game.board[target.square!] = null;
     game.pieces[game.board[51]!].square = null; target.square = 51; game.board[51] = target.id;
     game.initialPosition = structuredClone({ pieces: game.pieces, board: game.board, turn: game.turn });

@@ -12,7 +12,7 @@ function game(): GameState {
   return { ...p, turn: 'b', computer: { color: 'b', difficulty: 'medium' }, revision: 1, ruleset: ruleRegistry.selection(),
     initialPosition: structuredClone(p), ruleState: { private: 'never-search-this' }, roomId: 'BOTROOM1', createdAt: 0,
     phase: 'playing', moves: [], drawOffer: null, joined: { w: true, b: true }, claimed: { w: true, b: true },
-    playStartedAt: 0, lastMoveAt: null, result: null, crowns: { w: 'wRa', b: 'bK' },
+    playStartedAt: 0, lastMoveAt: null, result: null, crowns: { w: 'wRa', b: 'bQ' },
     tokens: { w: 'human-private', b: 'computer-private', observer: 'admin-private' } };
 }
 function context(state: GameState, online = true) {
@@ -26,7 +26,7 @@ function context(state: GameState, online = true) {
 }
 function input(g: GameState): ComputerInput {
   return { color: 'b', difficulty: 'medium', ruleset: g.ruleset, pieces: g.pieces, board: g.board, turn: g.turn,
-    enPassant: g.enPassant, halfmoveClock: g.halfmoveClock, ownCrown: 'bK' };
+    enPassant: g.enPassant, halfmoveClock: g.halfmoveClock, ownCrown: g.crowns.b };
 }
 function tactical() {
   const g = game(); g.board.fill(null); g.pieces = {};
@@ -42,10 +42,10 @@ describe('hidden-information computer player', () => {
     for (const value of [null, [], {}, { humanColor: 'observer', difficulty: 'hard' }, { humanColor: 'w', difficulty: 'impossible' }, { humanColor: 'b', difficulty: 'easy', script: true }]) expect(() => computerRequest(value, ruleRegistry.selection(), () => 0)).toThrow('invalid_computer');
   });
   it('projects identical search input for different enemy crowns, without credentials or private rule data', async () => {
-    const a = game(), b = structuredClone(a); b.crowns.w = 'wK';
+    const a = game(), b = structuredClone(a); b.crowns.w = 'wQ';
     const ca = new RoomCore(context(a).ctx), cb = new RoomCore(context(b).ctx); await Promise.all([ca.ready, cb.ready]);
     const pa = ca.computerTurn()!.input, pb = cb.computerTurn()!.input;
-    expect(pa).toEqual(pb); expect(pa.ownCrown).toBe('bK');
+    expect(pa).toEqual(pb); expect(pa.ownCrown).toBe('bQ');
     expect(Object.keys(pa).sort()).toEqual(['color','difficulty','ruleset','pieces','board','turn','enPassant','halfmoveClock','ownCrown','interrogationTargets','interrogationKnowledge'].sort());
     expect(JSON.stringify(pa)).not.toMatch(/human-private|computer-private|admin-private|never-search-this/);
     expect(chooseComputerMove(pa, () => 0).move).toEqual(chooseComputerMove(pb, () => 0).move);
@@ -62,7 +62,7 @@ describe('hidden-information computer player', () => {
     expect(chooseComputerMove(input(g)).move?.to).toBe(28); // Unprotected queen remains a valuable capture.
   });
   it('escapes an immediate threat to its own crown without imposing chess check restrictions', () => {
-    const g = tactical(); delete g.pieces.bQ; g.board[27] = null; delete g.pieces.wQ; g.board[28] = null;
+    const g = tactical(); g.ruleset = ruleRegistry.selection({ id: 'hidden-crown', version: 1 }); g.crowns.b = 'bK'; delete g.pieces.bQ; g.board[27] = null; delete g.pieces.wQ; g.board[28] = null;
     g.pieces.wRh = { id: 'wRh', color: 'w', type: 'R', square: 7, hasMoved: true, promoted: false }; g.board[7] = 'wRh';
     const move = chooseComputerMove(input(g)).move!; expect(move.pieceId).toBe('bK');
     const next = advanceSearch(input(g), move);

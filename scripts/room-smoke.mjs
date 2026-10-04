@@ -48,7 +48,7 @@ class Client {
 async function join(room, role) {
   const client = new Client(room, role); await client.wait(f => f.type === 'welcome'); await client.wait(f => f.type === 'state'); return client;
 }
-async function playing(wc = 'wK', bc = 'bK') {
+async function playing(wc = 'wQ', bc = 'bQ') {
   const room = await create(); const white = await join(room, 'white'), black = await join(room, 'black'), observer = await join(room, 'observer');
   await white.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
   await white.action({ type: 'select_crown', pieceId: wc }, f => f.type === 'state' && f.view.crownLocked.w);
@@ -81,19 +81,19 @@ try {
   await white.error({ type: 'resign' }, 'wrong_phase');
   const observer = await join(room, 'observer');
   check(observer.view.phase === 'lobby', 'observer does not advance lobby');
-  await observer.error({ type: 'select_crown', pieceId: 'wK' }, 'player_only');
+  await observer.error({ type: 'select_crown', pieceId: 'wQ' }, 'player_only');
   await white.error({ type: 'get_links' }, 'observer_only'); await white.error({ type: 'get_log' }, 'observer_only');
   const links = await observer.action({ type: 'get_links' }, f => f.type === 'links');
   assert.deepEqual({ white: links.links.white, black: links.links.black }, room.links); checks++;
   const black = await join(room, 'black'); await white.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
   await white.error({ type: 'select_crown', pieceId: 'wPa' }, 'invalid_crown');
   await white.error({ type: 'select_crown', pieceId: 'bQ' }, 'invalid_crown');
-  await white.action({ type: 'select_crown', pieceId: 'wK' }, f => f.type === 'state' && f.view.crownLocked.w);
+  await white.action({ type: 'select_crown', pieceId: 'wQ' }, f => f.type === 'state' && f.view.crownLocked.w);
   check(white.view.phase === 'crown_select', 'one crown does not start play');
   await white.error({ type: 'select_crown', pieceId: 'wQ' }, 'invalid_crown');
   await black.action({ type: 'select_crown', pieceId: 'bPe' }, f => f.type === 'error');
   await black.action({ type: 'select_crown', pieceId: 'bPf' }, f => f.type === 'error');
-  await black.action({ type: 'select_crown', pieceId: 'bK' }, f => f.type === 'state' && f.view.phase === 'playing');
+  await black.action({ type: 'select_crown', pieceId: 'bQ' }, f => f.type === 'state' && f.view.phase === 'playing');
   await white.wait(f => f.type === 'state' && f.view.phase === 'playing');
   await white.error({ type: 'move', from: sq('e2'), to: sq('e5') }, 'illegal_move');
   await black.error({ type: 'move', from: sq('e7'), to: sq('e5') }, 'not_your_turn');
@@ -114,7 +114,7 @@ try {
   await replacement.error({ type: 'respond_draw', accept: true }, 'no_opponent_offer');
   await black.action({ type: 'offer_draw' }, f => f.type === 'state' && f.view.drawOffer === 'b');
   await replacement.action({ type: 'respond_draw', accept: true }, f => f.type === 'state' && f.view.phase === 'ended');
-  check(replacement.view.result.reason === 'agreement' && replacement.view.crowns.b === 'bK', 'draw agreement and reveal');
+  check(replacement.view.result.reason === 'agreement' && replacement.view.crowns.b === 'bQ', 'draw agreement and reveal');
   await replacement.error({ type: 'move', from: 12, to: 20 }, 'wrong_phase');
   for (const client of [white, black, reopened, replacement]) privacy(client);
   const log = await observer.action({ type: 'get_log' }, f => f.type === 'log');
@@ -127,7 +127,7 @@ try {
 }
 // Fresh clients keep failed selections and stale sockets out of the final-game checks.
 try {
-  const game = await playing('wK', 'bBf');
+  const game = await playing('wQ', 'bBf');
   await move(game.white, game.observer, 'e2', 'e4');
   await move(game.black, game.observer, 'g7', 'g5');
   await move(game.white, game.observer, 'd1', 'h5');
@@ -138,7 +138,7 @@ try {
   await move(game.white, game.observer, 'f7', 'f8');
   check(game.white.view.result.reason === 'crown_captured' && game.white.view.result.winner === 'w', 'real crown capture ends immediately');
   await game.black.wait(f => f.type === 'state' && f.view.phase === 'ended');
-  check(game.black.view.crowns.w === 'wK', 'both players see reveal'); privacy(game.white); privacy(game.black);
+  check(game.black.view.crowns.w === 'wQ', 'both players see reveal'); privacy(game.white); privacy(game.black);
   const log = await game.observer.action({ type: 'get_log' }, f => f.type === 'log');
   check(log.moves.length === 7 && log.crowns.b === 'bBf', 'observer export matches full played game');
   const resignation = await playing();

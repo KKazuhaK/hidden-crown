@@ -29,7 +29,7 @@ try {
       throw new Error('Computer capacity game timed out');
     }
     await wait(f => f.type === 'state' && f.view.phase === 'crown_select');
-    ws.send(JSON.stringify({ type: 'select_crown', pieceId: 'bK' }));
+    ws.send(JSON.stringify({ type: 'select_crown', pieceId: 'bQ' }));
     const first = await wait(f => f.type === 'state' && f.view.moves.length === 1 && f.view.turn === 'b');
     const m = first.view.legalMoves[0]; ws.send(JSON.stringify({ type: 'move', from: m.from, to: m.to }));
     const last = await wait(f => f.type === 'state' && f.view.moves.length === 3 && f.view.turn === 'b');

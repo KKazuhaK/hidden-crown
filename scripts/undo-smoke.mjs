@@ -64,8 +64,8 @@ try {
   let white = await connect({ ...room, link: room.links.white }), black = await connect({ ...room, link: room.links.black });
   let god = await connect(room, true);
   await white.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
-  await white.action({ type: 'select_crown', pieceId: 'wK' }, f => f.type === 'state' && f.view.crownLocked.w);
-  await black.action({ type: 'select_crown', pieceId: 'bK' }, f => f.type === 'state' && f.view.phase === 'playing');
+  await white.action({ type: 'select_crown', pieceId: 'wQ' }, f => f.type === 'state' && f.view.crownLocked.w);
+  await black.action({ type: 'select_crown', pieceId: 'bQ' }, f => f.type === 'state' && f.view.phase === 'playing');
   await white.wait(f => f.type === 'state' && f.view.phase === 'playing');
   const initial = structuredClone(white.view.board);
   await white.action({ type: 'move', from: 12, to: 28 }, f => f.type === 'state' && f.view.moves.length === 1);
@@ -89,7 +89,7 @@ try {
   } else await black.wait(f => f.type === 'state' && !!f.view.undoRequest);
   await black.action({ type: 'respond_undo', accept: true }, f => f.type === 'state' && !f.view.undoRequest && f.view.moves.length === 0);
   await white.wait(f => f.type === 'state' && !f.view.undoRequest && f.view.moves.length === 0);
-  equal(white.view.board, initial); equal(white.view.turn, 'w'); equal(white.view.yourCrown, 'wK');
+  equal(white.view.board, initial); equal(white.view.turn, 'w'); equal(white.view.yourCrown, 'wQ');
   check(white.view.turnStartedAt >= white.view.playStartedAt);
   const log = (await request(`/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth)).data;
   equal(log.moves.length, 0); equal(log.events.filter(e => e.type === 'move').length, 2);
@@ -104,7 +104,7 @@ try {
     const created = await request('/api/rooms', 'POST', { computer: { humanColor: side, difficulty: 'hard' } }); equal(created.status, 201);
     const botRoom = created.data; ids.push(botRoom.roomId); const player = await connect(botRoom);
     await player.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
-    await player.action({ type: 'select_crown', pieceId: `${side}K` }, f => f.type === 'state' && f.view.crownLocked[side]);
+    await player.action({ type: 'select_crown', pieceId: `${side}Q` }, f => f.type === 'state' && f.view.crownLocked[side]);
     await player.wait(f => f.type === 'state' && f.view.phase === 'playing' && f.view.turn === side);
     const opening = player.view.moves.length;
     const makeMove = async () => { const m = player.view.legalMoves[0], n = player.view.moves.length; await player.action({ type: 'move', from: m.from, to: m.to, ...(m.promotion ? { promotion: m.promotion } : {}) }, f => f.type === 'state' && f.view.moves.length === n + 1); };
@@ -113,7 +113,7 @@ try {
     let cursor = player.frames.length;
     await player.action({ type: 'request_undo' }, f => f.type === 'state' && !!f.view.undoRequest);
     await player.wait(f => f.type === 'state' && !f.view.undoRequest && f.view.moves.length === opening, cursor);
-    equal(player.view.turn, side); equal(player.view.yourCrown, `${side}K`);
+    equal(player.view.turn, side); equal(player.view.yourCrown, `${side}Q`);
     await makeMove();
     // Request before the delayed bot response; its pending move must be cancelled.
     cursor = player.frames.length;

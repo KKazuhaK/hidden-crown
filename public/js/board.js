@@ -1,6 +1,9 @@
 import { t, pieceName } from './i18n.js';
 import { pieceGraphic, crownMark } from './pieces.js';
 export const squareName = square => 'abcdefgh'[square % 8] + (Math.floor(square / 8) + 1);
+export function canCrown(piece, version = 3) {
+  return !!piece && /^[wb](K|Q|R[ah]|B[cf]|N[bg])$/.test(piece.id) && !piece.promoted && piece.square !== null && (version === 1 || piece.type !== (version === 2 ? 'Q' : 'K'));
+}
 export function crownBadge(color) {
   const badge = document.createElement('span'); badge.className = `crown-badge crown-${color}`;
   badge.append(crownMark()); badge.setAttribute('aria-label', t('crownBadge')); return badge;
@@ -22,7 +25,7 @@ export function renderBoard(container, view, options) {
       button.setAttribute('aria-label', t('squareLabel', { square: squareName(square), piece: piece ? pieceName(piece) : t('empty') }));
       if (last && (last.from === square || (last.kind === 'interrogation' ? last.targetSquare === square : last.to === square))) button.classList.add('last-move');
       if (selected === square || (candidate && candidate === id)) button.classList.add('selected');
-      if (view.phase === 'crown_select' && view.role !== 'observer' && !view.crownLocked[view.role] && piece?.color === view.role && piece.type !== 'P' && (view.ruleset.version === 1 || piece.type !== 'Q') && !piece.promoted) button.classList.add('candidate');
+      if (view.phase === 'crown_select' && view.role !== 'observer' && !view.crownLocked[view.role] && piece?.color === view.role && canCrown(piece, view.ruleset.version)) button.classList.add('candidate');
       if (piece) {
         const motion = document.createElement('span'); motion.className = 'piece-motion'; motion.dataset.pieceId = id;
         motion.append(pieceGraphic(piece));

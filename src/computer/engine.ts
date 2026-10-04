@@ -17,7 +17,7 @@ export const searchLimits = {
   hard: { depth: 4, nodes: 8000, milliseconds: 160 }
 } as const;
 const values = { P: 100, N: 320, B: 335, R: 500, Q: 900, K: 360 };
-export const isCrownCandidate = (p: Piece, version = 2) => p.id[1] !== 'P' && (version === 1 || p.id[1] !== 'Q') && !p.promoted && p.square !== null;
+export const isCrownCandidate = (p: Piece, version = 3) => /^[wb](K|Q|R[ah]|B[cf]|N[bg])$/.test(p.id) && (version === 1 || p.id[1] !== (version === 2 ? 'Q' : 'K')) && !p.promoted && p.square !== null;
 function movesFor(p: Position, color: Color, options: RuleSelection['options']) {
   return pseudoLegalMoves(p as GameState, color).filter(m => (options.castling || !m.castle) && (options.enPassant || !m.enPassant));
 }

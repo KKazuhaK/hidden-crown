@@ -7,5 +7,6 @@ export function actionLabel(record, translate, pieces) {
   if (record.kind !== 'interrogation') return record.notation;
   const piece = pieces[record.targetId];
   const square = 'abcdefgh'[record.targetSquare % 8] + (Math.floor(record.targetSquare / 8) + 1);
-  return translate('interrogationRecord', { piece: translate(piece?.type ?? 'K'), square }) + ' · ' + translate(record.answer ? `interrogation_${record.answer}` : 'interrogation_private');
+  const actor = pieces[record.pieceId]?.type ?? record.pieceId?.[1] ?? 'K';
+  return translate('interrogationRecord', { actor: translate(actor), piece: translate(piece?.type ?? 'Q'), square }) + ' · ' + translate(record.answer ? `interrogation_${record.answer}` : 'interrogation_private');
 }

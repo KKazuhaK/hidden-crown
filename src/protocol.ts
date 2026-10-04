@@ -24,7 +24,8 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
     switch (m.type) {
       case "hello": if (typeof m.token !== "string" || m.token.length > 128) return null; allowed = ["token"]; break;
       case "select_crown": if (typeof m.pieceId !== "string" || m.pieceId.length > 16) return null; allowed = ["pieceId"]; break;
-      case 'interrogate': if (typeof m.targetId !== 'string' || !/^[wb](K|R[ah]|B[cf]|N[bg])$/.test(m.targetId)) return null; allowed = ['targetId']; break;
+      // The rule version decides whether kings or queens are eligible targets.
+      case 'interrogate': if (typeof m.targetId !== 'string' || !/^[wb](K|Q|R[ah]|B[cf]|N[bg])$/.test(m.targetId)) return null; allowed = ['targetId']; break;
       case "move":
         if (![m.from, m.to].every(s => Number.isInteger(s) && s >= 0 && s < 64) || (m.promotion !== undefined && !["Q", "R", "B", "N"].includes(m.promotion))) return null;
         allowed = ["from", "to", "promotion"]; break;

@@ -107,7 +107,7 @@ export class RoomCore {
     const input: ComputerInput = structuredClone({ color: computer.color, difficulty: computer.difficulty,
       ruleset: state.ruleset, pieces: state.pieces, board: state.board, turn: state.turn,
       enPassant: state.enPassant, halfmoveClock: state.halfmoveClock, ownCrown: state.crowns[computer.color] });
-    if (state.ruleset.version === 2 && state.ruleset.id === 'hidden-crown') {
+    if ([2, 3].includes(state.ruleset.version) && state.ruleset.id === 'hidden-crown') {
       input.interrogationTargets = ruleRegistry.resolve(state.ruleset).interrogationTargets?.(state, computer.color) ?? [];
       input.interrogationKnowledge = Object.fromEntries(state.moves.filter(m => m.kind === 'interrogation' && m.color === computer.color).map(m => [m.targetId!, m.answer!]));
     }

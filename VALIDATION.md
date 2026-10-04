@@ -115,4 +115,12 @@ Local Node.js 24 validation: both TypeScript configurations pass; 84 tests pass 
 
 The browser was exercised as both players: White successfully interrogated Black's king and saw the positive answer; Black saw the same public target with a private-answer label. Both language versions are present. The admin observer and export paths retain answers; ordinary player log access remains denied. Existing v1 rooms resolve the retained original implementation; new rooms default to v2. No schema migration or database reset is required.
 
+## 2.3.1 king interrogation correction — 2026-10-04
+
+Both TypeScript configurations pass; 87 SQLite unit tests pass. New rooms default to v3: the king cannot be crowned, the original queen can, and the king supplies interrogation eligibility and `K` notation. Tests cover both sides' seven candidates, sight through blockers, queen targets, excluded kings, quotas, redaction, king capture with continued normal moves, queen-crown capture, castling rights, replay, localized history, CSV and retained v1/v2 dispatch.
+
+Actual HTTP/WebSocket SQLite suites pass: self-host 163 assertions, computer 122, undo 77, room 266, room-number joins 62, and interrogation 48. The interrogation suite now uses legal king moves, checks answers in player/observer/admin logs, restarts and reloads quota/privacy, and captures a king before verifying continued normal play and rejected interrogation. PostgreSQL and native amd64/arm64 containers run through the unchanged release validation workflow.
+
+Browser checks verify that clicking e1 does not enable crown locking while clicking d1 selects the queen; English and Chinese selection/rules agree. A king on e2 successfully interrogated the enemy queen on e7 through intervening pawns, consumed its turn, and produced `king: interrogate queen at e7` / `王审问 e7 的后` with the private positive answer. No browser console errors were observed.
+
 Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and PostgreSQL, plus native amd64/arm64 container, Compose, persistence, limits and capacity checks. Interrogation smoke coverage is part of both backend jobs and the container job.

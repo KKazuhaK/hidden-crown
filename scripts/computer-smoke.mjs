@@ -72,7 +72,7 @@ try {
     equal((await request(`/api/admin/rooms/${room.roomId}/links`, 'GET', undefined, auth)).data, room.links);
     const human = await connect(room); resumed = human;
     await human.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
-    await human.action({ type: 'select_crown', pieceId: `${humanColor}K` }, f => f.type === 'state' && f.view.crownLocked[humanColor]);
+    await human.action({ type: 'select_crown', pieceId: `${humanColor}Q` }, f => f.type === 'state' && f.view.crownLocked[humanColor]);
     await human.wait(f => f.type === 'state' && f.view.phase === 'playing');
     await human.wait(f => f.type === 'state' && f.view.turn === humanColor && f.view.legalMoves?.length);
     const before = human.view.moves.length, move = human.view.legalMoves[0];
