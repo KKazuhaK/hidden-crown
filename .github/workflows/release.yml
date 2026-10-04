@@ -112,10 +112,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, zipfile
+          import os, re, zipfile
           from pathlib import Path
           env = Path('.env.example').read_text()
-          env = env.replace('HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.0', f"HIDDEN_CROWN_IMAGE={os.environ['IMAGE']}:{os.environ['VERSION']}")
+          env = re.sub(r'^HIDDEN_CROWN_IMAGE=.*$', f"HIDDEN_CROWN_IMAGE={os.environ['IMAGE']}:{os.environ['VERSION']}", env, flags=re.M)
           with zipfile.ZipFile('hidden-crown-compose.zip', 'w', zipfile.ZIP_DEFLATED) as bundle:
               for file in ['docker-compose.yml', 'docker-compose.bind.yml', 'docker-compose.secrets.yml', 'DEPLOYMENT.md', 'deploy/nginx.conf', 'deploy/hidden-crown-proxy.conf']:
                   bundle.write(file)

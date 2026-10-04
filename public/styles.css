@@ -23,7 +23,9 @@ button:disabled { opacity:.45; cursor:default; }
 @media(prefers-reduced-motion:reduce) { .is-refreshing .button-icon { animation:none; } }
 button:focus-visible,a:focus-visible,input:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
 a { color:var(--accent); }
-.site-header { max-width:1200px; margin:auto; padding:23px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); }
+.site-header { max-width:1200px; margin:auto; padding:23px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); gap:12px; }
+.header-actions { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.header-actions button { white-space:nowrap; }
 .brand { color:var(--text); text-decoration:none; font-weight:650; font-size:20px; letter-spacing:-.5px; display:flex; align-items:center; gap:10px; }
 .brand-mark { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:30px; line-height:1; }
 .quiet-button { background:transparent; }
@@ -37,10 +39,10 @@ h3 { font-size:14px; font-weight:600; }
 .muted,.small { color:var(--muted); }
 .small { font-size:13px; }
 .eyebrow { text-transform:uppercase; font-size:11px; letter-spacing:2px; font-weight:650; color:var(--muted); }
-.home { max-width:800px; margin:42px auto; }
-.hero { text-align:center; padding:30px 10px 42px; }
-.hero-icon { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:95px; line-height:1.3; }
-.hero h1 { font-size:58px; margin:16px auto; max-width:700px; }
+.home { max-width:800px; margin:24px auto; }
+.hero { text-align:center; padding:12px 10px 28px; }
+.hero-icon { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:64px; line-height:1.3; }
+.hero h1 { font-size:46px; margin:16px auto; max-width:700px; }
 .hero .description { font-size:18px; max-width:520px; margin:20px auto 28px; color:var(--muted); }
 .features { display:flex; justify-content:center; flex-wrap:wrap; gap:26px; font-size:13px; color:var(--muted); margin-top:26px; }
 .features span::before { content:'·'; color:var(--gold); padding-right:8px; }
@@ -50,6 +52,11 @@ h3 { font-size:14px; font-weight:600; }
 .join-form { display:flex; gap:10px; margin-top:6px; }
 .join-form input { flex:1; min-width:0; font:inherit; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--text); padding:9px 12px; text-transform:uppercase; }
 .join-form button { flex-shrink:0; }
+.hero .join-panel { max-width:560px; margin:0 auto; text-align:left; }
+.hero .join-panel h2 { font-size:22px; margin-bottom:6px; }
+.hero .join-form { margin-top:8px; }
+.hero .join-form input { font-size:20px; letter-spacing:1.5px; padding:12px; }
+.hero .join-form input::placeholder { font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:15px; letter-spacing:0; }
 .join-error { color:var(--danger); font-size:13px; margin:12px 0 0; }
 .resume-actions { margin-top:12px; }
 .room-number-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:18px; }
@@ -147,4 +154,6 @@ dialog > .actions { justify-content:flex-end; margin-top:18px; }
 .promotion-choices .piece { width:100%; height:100%; }
 @media(prefers-color-scheme:dark) { :root { --bg:#181e1b; --surface:#202823; --text:#e8ebe4; --muted:#a3b1a7; --line:#35423a; --accent:#9fbc9f; --accent-text:#18251b; --light:#b5c1a8; --dark:#637d68; --gold:#d4ac4b; --danger:#efa99a; --warning-bg:#392723; } }
 @media(max-width:850px) { .game-layout { grid-template-columns:minmax(0,560px); justify-content:center; } .game-heading { max-width:560px; margin-left:auto; margin-right:auto; } .sidebar { width:100%; } .move-scroll { max-height:260px; } }
-@media(max-width:480px) { .site-header { padding:17px 16px; } main { padding:22px 4vw; } .hero { padding-top:0; } .hero h1 { font-size:40px; } .home { margin:18px auto; } .hero .description { font-size:16px; } .panel { padding:16px; } .game-heading h1 { font-size:28px; } .presence { gap:10px; } .crown-badge { width:16px; height:16px; font-size:12px; line-height:15px; top:2px; right:2px; } .features { gap:12px; } .file-label,.rank-label { font-size:9px; } }
+@media(max-width:480px) { .site-header { padding:17px 16px; } main { padding:22px 4vw; } .hero { padding-top:0; } .hero h1 { font-size:32px; } .home { margin:18px auto; } .hero .description { font-size:16px; } .panel { padding:16px; } .game-heading h1 { font-size:28px; } .presence { gap:10px; } .crown-badge { width:16px; height:16px; font-size:12px; line-height:15px; top:2px; right:2px; } .features { gap:12px; } .file-label,.rank-label { font-size:9px; } }
+
+@media(max-width:480px) { .site-header { padding:16px 12px; gap:8px; } .brand { font-size:16px; gap:6px; } .brand-mark { font-size:24px; } .header-actions { gap:6px; } .header-actions button { padding:8px; font-size:12px; } .header-actions .button-with-icon { gap:5px; } .header-actions .button-icon { width:16px; height:16px; flex-basis:16px; } .hero .join-panel h2 { font-size:20px; } .hero .join-form { flex-direction:column; } .hero .join-form button { width:100%; padding:12px; } }

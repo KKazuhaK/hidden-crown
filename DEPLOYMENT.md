@@ -22,7 +22,7 @@ PUBLIC_ORIGIN=https://chess.your-domain.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD='填写你自己的16至256字符密码'
 HOST_PORT=8787
-HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.0
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.1
 WAITING_TIMEOUT_MINUTES=15
 TRUSTED_PROXIES=
 ```

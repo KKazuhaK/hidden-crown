@@ -6,6 +6,8 @@ import { animateBoard, resetBoardMotion } from './board-motion.js';
 import { replayAt } from './replay.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
+const createButton = document.querySelector('#create-room');
+createButton.addEventListener('click', createRoom);
 const roomId = new URLSearchParams(location.search).get('room');
 const adminWatch = location.pathname === '/admin/watch';
 const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('t');
@@ -89,7 +91,7 @@ function linkRows(links) {
 }
 function joinPanel() {
   const panel = node('section', 'panel join-panel'); panel.append(node('h2', '', t('joinTitle')));
-  const help = node('p', 'small', t('joinHelp')); help.id = 'join-help'; panel.append(help);
+  const help = node('p', 'small', t('joinIntro')); help.id = 'join-help'; panel.append(help);
   const form = node('form', 'join-form'); form.noValidate = true;
   const label = node('label', 'small', t('roomNumber')); label.htmlFor = 'join-code';
   const input = node('input'); input.id = 'join-code'; input.name = 'room'; input.value = joinCode;
@@ -137,14 +139,14 @@ async function joinRoom(color) {
 function renderHome() {
   const home = node('div', 'home'), hero = node('section', 'hero');
   hero.append(node('p', 'eyebrow', t('homeTag')), node('div', 'hero-icon', '♔\uFE0E'), node('h1', '', t('subtitle')), node('p', 'description', t('description')));
-  hero.append(button(t(creating ? 'creating' : 'create'), createRoom, 'primary', creating || joining, 'plus'));
+  hero.append(joinPanel());
   const features = node('div', 'features'); for (const key of ['featureSecret', 'featureRemote', 'featureTime']) features.append(node('span', '', t(key)));
   hero.append(features); home.append(hero);
-  home.append(joinPanel());
   if (inviteLinks) home.append(linkRows(inviteLinks));
   home.append(rules()); app.replaceChildren(home);
 }
 async function createRoom() {
+  if (creating || joining) return;
   creating = true; render();
   try {
     const response = await fetch('/api/rooms', { method: 'POST' });
@@ -337,6 +339,9 @@ function renderGame() {
   updateTimer();
 }
 function render() {
+  createButton.hidden = Boolean(roomId) || adminWatch;
+  createButton.disabled = creating || joining;
+  withIcon(createButton, t(creating ? 'creating' : 'create'), 'plus');
   renderConfirmation();
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; withIcon(languageButton, language === 'en' ? '中文' : 'EN', 'language');
   document.querySelector('#promotion-title').textContent = t('selectPromotion'); withIcon(document.querySelector('#promotion-cancel'), t('cancel'), 'close');
