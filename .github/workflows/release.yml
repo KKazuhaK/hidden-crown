@@ -117,12 +117,12 @@ jobs:
           env = Path('.env.example').read_text()
           env = env.replace('HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.0', f"HIDDEN_CROWN_IMAGE={os.environ['IMAGE']}:{os.environ['VERSION']}")
           with zipfile.ZipFile('hidden-crown-compose.zip', 'w', zipfile.ZIP_DEFLATED) as bundle:
-              for file in ['docker-compose.yml', 'docker-compose.secrets.yml', 'DEPLOYMENT.md', 'deploy/nginx.conf', 'deploy/hidden-crown-proxy.conf']:
+              for file in ['docker-compose.yml', 'docker-compose.bind.yml', 'docker-compose.secrets.yml', 'DEPLOYMENT.md', 'deploy/nginx.conf', 'deploy/hidden-crown-proxy.conf']:
                   bundle.write(file)
               bundle.writestr('.env.example', env)
           PY
-          sha256sum hidden-crown-compose.zip docker-compose.yml docker-compose.secrets.yml .env.example deploy/nginx.conf deploy/hidden-crown-proxy.conf > SHA256SUMS
+          sha256sum hidden-crown-compose.zip docker-compose.yml docker-compose.bind.yml docker-compose.secrets.yml .env.example deploy/nginx.conf deploy/hidden-crown-proxy.conf > SHA256SUMS
           printf 'Docker image: `%s:%s` (linux/amd64 and linux/arm64).\n\nDownload hidden-crown-compose.zip, copy .env.example to .env, set your domain and administrator password, then run docker compose pull and docker compose up -d. The deployment image is public for anonymous pulls. See DEPLOYMENT.md for Nginx and configuration.\n' "$IMAGE" "$VERSION" > release-notes.md
           flags=(); if [ "$PRE" = true ]; then flags+=(--prerelease); fi
           gh release create "$TAG" --verify-tag --title "$TAG" --notes-file release-notes.md "${flags[@]}" \
-            hidden-crown-compose.zip docker-compose.yml docker-compose.secrets.yml .env.example DEPLOYMENT.md deploy/nginx.conf deploy/hidden-crown-proxy.conf SHA256SUMS
+            hidden-crown-compose.zip docker-compose.yml docker-compose.bind.yml docker-compose.secrets.yml .env.example DEPLOYMENT.md deploy/nginx.conf deploy/hidden-crown-proxy.conf SHA256SUMS

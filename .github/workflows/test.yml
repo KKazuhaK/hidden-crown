@@ -96,3 +96,37 @@ jobs:
           assert.ok((await response.json()).csrf);
           console.log('Compose environment-based administrator login passed');
           JS
+      - name: Compose with host data directory and restart persistence
+        shell: bash
+        env:
+          HIDDEN_CROWN_IMAGE: hidden-crown:test
+          PUBLIC_ORIGIN: http://127.0.0.1:8797
+          HOST_PORT: '8797'
+          ADMIN_USERNAME: bind-admin
+          ADMIN_PASSWORD: isolated-bind-compose-test-password
+          HIDDEN_CROWN_URL: http://127.0.0.1:8797
+          HIDDEN_CROWN_ADMIN_USERNAME: bind-admin
+          HIDDEN_CROWN_ADMIN_PASSWORD: isolated-bind-compose-test-password
+        run: |
+          set -euo pipefail
+          export DATA_DIR="$RUNNER_TEMP/hc-bind/data"
+          sudo install -d -m 700 -o 1000 -g 1000 "$DATA_DIR"
+          compose=(docker compose -p hc-bind -f docker-compose.bind.yml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" up -d --pull never
+          trap '"${compose[@]}" logs; "${compose[@]}" down' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8797/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8797/healthz
+          node scripts/persistence-smoke.mjs prepare
+          sudo test -s "$DATA_DIR/hidden-crown.sqlite"
+          test "$(sudo stat -c '%u:%g' "$DATA_DIR/hidden-crown.sqlite")" = '1000:1000'
+          "${compose[@]}" restart
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8797/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8797/healthz
+          node scripts/persistence-smoke.mjs verify

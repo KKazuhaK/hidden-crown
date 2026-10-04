@@ -1,0 +1,39 @@
+# Standalone template: save as docker-compose.yml in /opt/hidden-crown.
+# First create ./data with owner 1000:1000 and mode 700.
+services:
+  hidden-crown:
+    image: ${HIDDEN_CROWN_IMAGE:-ghcr.io/kkazuhak/hidden-crown:latest}
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "127.0.0.1:${HOST_PORT:-8787}:8787"
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the public HTTPS origin in .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set an administrator password of 16 to 256 characters in .env}
+      # Only the proxy addresses explicitly named here can supply the real client IP.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      CREATE_LIMIT_PER_IP: ${CREATE_LIMIT_PER_IP:-5}
+      CREATE_LIMIT_GLOBAL: ${CREATE_LIMIT_GLOBAL:-50}
+      WAITING_TIMEOUT_MINUTES: ${WAITING_TIMEOUT_MINUTES:-15}
+      MAX_ROOMS: ${MAX_ROOMS:-1000}
+      MAX_CONNECTIONS: ${MAX_CONNECTIONS:-512}
+      MAX_ROOM_BYTES: ${MAX_ROOM_BYTES:-4194304}
+      MAX_DATABASE_BYTES: ${MAX_DATABASE_BYTES:-268435456}
+    volumes:
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: 1.0
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

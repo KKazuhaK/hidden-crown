@@ -42,6 +42,36 @@ Docker 自动选择 AMD64 或 ARM64 镜像。SQLite 使用命名卷 `hidden-crow
 
 普通配置修改后执行 `docker compose up -d`。`WAITING_TIMEOUT_MINUTES` 仅用于新数据库初始化；已有等待时限通过管理员后台修改。升级时修改 `HIDDEN_CROWN_IMAGE` 的版本，然后执行 `docker compose pull && docker compose up -d`；版本固定便于回滚，也可主动选用 `latest` 自动跟随稳定发布。
 
+## 使用 `/opt/hidden-crown/data` 保存数据
+
+仓库提供独立的 [docker-compose.bind.yml](docker-compose.bind.yml) 模板，适合把配置和数据都放在 `/opt/hidden-crown`。首次部署时，将此模板保存为该目录的 `docker-compose.yml`，同时把 `.env.example` 保存为 `.env`：
+
+```text
+/opt/hidden-crown/
+├── docker-compose.yml  # 使用 docker-compose.bind.yml 的内容
+├── .env
+└── data/
+    ├── hidden-crown.sqlite
+    └── ...            # SQLite 的 WAL/SHM 等文件
+```
+
+```bash
+sudo mkdir -p /opt/hidden-crown
+sudo install -d -m 700 -o 1000 -g 1000 /opt/hidden-crown/data
+cd /opt/hidden-crown
+# 将模板放入此目录，编辑 .env 中的域名和管理员密码。
+chmod 600 .env
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+镜像以 UID/GID `1000:1000` 运行，因此必须先创建具有正确所有权的数据目录；模板不会自动创建一个 root 所有的目录。`DATA_DIR` 默认是 Compose 文件旁的 `./data`，也可在 `.env` 中指定其他绝对路径。Nginx 仍反代到 `127.0.0.1:8787`。
+
+源码仓库为私有：登录 GitHub 后可查看或下载模板，服务器不能直接匿名 `curl` 私有仓库的 Raw URL。只需上传这两个配置文件，镜像可以匿名拉取。现有命名卷部署不要直接替换模板；切换存储前先停机，将原数据卷的全部内容复制到新目录并设置所有权，否则会打开一个新数据库。
+
+备份目录时先执行 `docker compose stop`，完整备份 `data/` 后再执行 `docker compose start`。更新镜像和重建容器都会继续使用同一目录。
+
 ## 可选：使用密码文件
 
 默认把账号密码集中在 `.env`，无需另建 secrets 文件。偏好密码文件的用户可用 `docker-compose.secrets.yml` 覆盖：把 `.env` 中 `ADMIN_PASSWORD` 设为 `using-password-file`（满足基础配置检查，最终容器环境会清空此值），并创建文件：
