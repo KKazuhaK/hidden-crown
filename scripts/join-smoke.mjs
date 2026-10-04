@@ -6,7 +6,11 @@ const admin = await adminHeaders(base);
 const sockets = [];
 let checks = 0;
 function equal(actual, expected) { assert.deepEqual(actual, expected); checks++; }
-async function create() { return (await fetch(`${base}/api/rooms`, { method: 'POST' })).json(); }
+async function create() {
+  const response = await fetch(`${base}/api/rooms`, { method: 'POST' });
+  equal(response.status, 201);
+  return response.json();
+}
 async function claim(code, options = {}) {
   const response = await fetch(`${base}/api/rooms/${code}/join`, { method: 'POST', ...options });
   equal(response.headers.get('cache-control'), 'no-store');
