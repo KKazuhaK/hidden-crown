@@ -298,20 +298,36 @@ function crownDescription(id) {
 }
 function resultPanel() {
   const panel = node('section', 'panel result-panel'), result = view.result;
-  panel.append(node('p', 'eyebrow', t('ended')), node('h2', '', result.reason === 'admin' ? t('adminEnd') : result.winner ? t('winner', { color: colorName(result.winner) }) : t('draw')));
+  const player = view.role === 'w' || view.role === 'b';
+  const outcome = result.reason === 'admin' ? t('adminEnd') : result.winner ? player ? t(result.winner === view.role ? 'youWon' : 'youLost') : t('winner', { color: colorName(result.winner) }) : t('draw');
+  panel.append(node('p', 'eyebrow', t('ended')), node('h2', '', outcome));
   let explanation;
   if (result.reason === 'crown_captured') {
     const loser = result.winner === 'w' ? 'b' : 'w';
-    explanation = t('crown_captured', { color: colorName(loser), piece: pieceName(view.pieces[view.crowns[loser]]) });
+    const target = view.crowns[loser], capture = view.moves.find(move => move.captured === target);
+    explanation = player ? t(result.winner === view.role ? 'youCapturedCrown' : 'yourCrownCaptured') : t('crown_captured', { color: colorName(loser), piece: t(view.pieces[target].type) });
+    if (capture) explanation += ' ' + t('captureSquare', { square: squareName(capture.to) });
   } else if (result.reason === 'resign') explanation = t('resignReason', { color: colorName(result.winner === 'w' ? 'b' : 'w') });
   else explanation = t(result.reason, { plies: view.ruleset?.options.drawPlyLimit ?? 100 });
-  panel.append(node('p', '', explanation), node('h3', '', t('reveal')));
-  for (const id of Object.values(view.crowns ?? {}).filter(Boolean)) {
+  panel.append(node('p', 'result-explanation', explanation), node('h3', '', t('reveal')));
+  const cards = node('div', 'crown-reveal-cards');
+  for (const color of player ? [view.role, view.role === 'w' ? 'b' : 'w'] : ['w', 'b']) {
+    const id = view.crowns?.[color]; if (!id) continue;
     const piece = view.pieces[id]; const capture = view.moves.find(m => m.captured === id);
-    let text = crownDescription(id);
-    if (piece.square === null && capture) text += ' · ' + t('capturedAt', { square: squareName(capture.to) });
-    panel.append(node('p', 'reveal-lines', text));
+    const card = node('div', 'crown-reveal-card'), graphic = node('div', 'revealed-piece');
+    graphic.append(pieceGraphic(piece), crownBadge(color));
+    const description = node('div', 'crown-reveal-description');
+    const owner = player ? t(color === view.role ? 'yourCrownTitle' : 'opponentCrownTitle') + ' · ' + colorName(color) : t('sideCrownTitle', { color: colorName(color) });
+    description.append(node('p', 'small crown-owner', owner), node('h3', 'revealed-piece-name', t(piece.type)));
+    const origin = view.initialPosition?.pieces[id]?.square;
+    const startingSquare = origin === undefined || origin === null ? (id[2] ?? (id[1] === 'K' ? 'e' : 'd')) + (color === 'w' ? '1' : '8') : squareName(origin);
+    description.append(node('p', 'small crown-origin', t('startingSquare', { square: startingSquare })));
+    const captured = piece.square === null;
+    const state = captured ? t(capture ? 'crownCapturedSquare' : 'crownCapturedStatus', { square: capture ? squareName(capture.to) : '' }) : t('crownSurvivedSquare', { square: squareName(piece.square) });
+    description.append(node('p', `crown-state ${captured ? 'is-captured' : 'is-surviving'}`, state));
+    card.append(graphic, description); cards.append(card);
   }
+  panel.append(cards);
   if (view.computer && view.role !== 'observer') panel.append(button(t('playAgain'), () => location.assign('/create?mode=computer'), 'primary', false, 'computer'));
   return panel;
 }

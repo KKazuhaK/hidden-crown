@@ -128,3 +128,7 @@ Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and Post
 ## 2.3.2 persistent interrogation marks — 2026-10-04
 
 89 unit tests pass. Marker knowledge is derived from recipient-visible records by piece ID, filters answers by player role, and uses the displayed replay prefix. Coverage checks separate player/observer knowledge, absent answers, moving and captured pieces, and rewinding before interrogation. Browser verification confirms a clear answer adds a × badge, retains it after reconnect, follows the queen from e7 to f6, and never appears in the opponent view. Both English and Chinese descriptions and tooltips are present. The 2.3.1 correction passed main and Release CI on SQLite/PostgreSQL and native AMD64/ARM64 before this UI follow-up.
+
+## 2.3.3 visual crown reveal — 2026-10-04
+
+89 unit tests pass. A completed actual HTTP/WebSocket game with a king capturing the queen crown was inspected from both player identities. The winner sees You won and the loser sees You lost; each sees their own crown first. Two illustrated cards show side, piece, starting square, survived/current square or captured/capture square. English and Chinese labels agree. At 390px the cards stack without horizontal overflow; browser console errors are absent. The observer retains side-based winner labels. No rule, persistence or export changes are introduced.

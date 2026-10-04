@@ -159,7 +159,19 @@ details li { margin-top:9px; }
 .selection-status { min-height:26px; color:var(--accent); font-size:13px; }
 .result-panel { margin-bottom:22px; border-top:3px solid var(--gold); }
 .result-panel h2 { font-family:Georgia,serif; font-size:28px; }
-.reveal-lines { font-size:13px; color:var(--muted); }
+.result-explanation { color:var(--muted); }
+.crown-reveal-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; max-width:760px; }
+.crown-reveal-card { display:flex; align-items:center; gap:16px; padding:16px; border:1px solid var(--line); border-radius:9px; background:var(--bg); }
+.revealed-piece { position:relative; display:flex; align-items:center; justify-content:center; width:64px; height:72px; flex-shrink:0; }
+.revealed-piece .piece { width:64px; height:64px; }
+.crown-reveal-description { min-width:0; }
+.crown-owner,.crown-origin { margin-bottom:4px; }
+.revealed-piece-name { font-size:20px; margin-bottom:4px; }
+.crown-state { display:inline-block; margin:4px 0 0; padding:2px 8px; border:1px solid var(--line); border-radius:5px; font-size:12px; }
+.crown-state.is-captured { color:var(--danger); }
+.crown-state.is-surviving { color:var(--accent); }
+.result-panel > button { margin-top:18px; }
+@media(max-width:600px) { .crown-reveal-cards { grid-template-columns:1fr; } .crown-reveal-card { padding:12px; } }
 .observer-stats { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
 .stat-label { display:block; color:var(--muted); font-size:12px; }
 .stat-value { font-size:16px; }

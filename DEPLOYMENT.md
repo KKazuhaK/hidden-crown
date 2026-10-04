@@ -31,7 +31,7 @@ sudo nano .env
 PUBLIC_ORIGIN=https://chess.your-domain.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD='你自己的16至256字符管理员密码'
-HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.3.2
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.3.3
 HOST_PORT=8787
 DATABASE_URL='postgresql://hidden_crown:URL编码后的数据库密码@host.docker.internal:5432/hidden_crown'
 PG_POOL_MAX=10
@@ -162,7 +162,7 @@ Cloudflare 适配器保留并共用规则和房间核心；它不具备自托管
 已安装 Docker、Compose、wget、openssl 的服务器，执行以下命令。把域名替换成自己的：
 
 ```bash
-wget -O /tmp/hidden-crown-install.sh https://raw.githubusercontent.com/KKazuhaK/hidden-crown/v2.3.2/install.sh
+wget -O /tmp/hidden-crown-install.sh https://raw.githubusercontent.com/KKazuhaK/hidden-crown/v2.3.3/install.sh
 sudo bash /tmp/hidden-crown-install.sh https://chess.your-domain.com
 ```
 
