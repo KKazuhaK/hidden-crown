@@ -86,7 +86,6 @@ jobs:
           node scripts/join-smoke.mjs
           node scripts/computer-smoke.mjs
           node scripts/undo-smoke.mjs
-          node scripts/interrogation-smoke.mjs
           node scripts/persistence-smoke.mjs prepare
           docker restart hc-test
           for attempt in $(seq 1 20); do
@@ -95,6 +94,7 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8794/healthz
           node scripts/persistence-smoke.mjs verify
+          node scripts/interrogation-smoke.mjs
           docker restart hc-test
           for attempt in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:8794/healthz; then break; fi
