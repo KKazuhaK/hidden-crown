@@ -74,3 +74,13 @@ Administrator authorization follow-up: 82 self-hosted assertions passed. An isol
 - Administrator UI shares the existing saved language preference and defaults to English without a preference. Verified English login, Chinese/English lists, settings-save success, player-link modal and delete confirmation without submitting deletion. All 69 admin translation keys match across languages.
 - Refresh uses a single circular-arrow icon and a fixed 160px button width. Verified the glyph and width in the browser and a successful manual refresh.
 - Type checks, JavaScript syntax checks and 82 self-host assertions passed locally. The new admin translation module is served successfully by the self-hosted asset allowlist.
+
+
+## 2.0 storage and rule refactor (2026-10-04)
+
+- Local type checks passed for both the Cloudflare-compatible core and Node server.
+- 55 unit/integration tests passed using real SQLite and an isolated PostgreSQL 18.4 cluster. Coverage includes append-only history, revision conflicts, rollback after an insert failure, cascade deletion, sessions/settings, schema migrations and rule-version dispatch. Private crown ID lengths do not change storage admission bytes.
+- Complete self-host runtime suites passed: SQLite 160 assertions; PostgreSQL 163 assertions. Both exercise HTTP/WebSocket authentication, crown privacy, moderation, expiry, restart recovery, anti-spoofing, throttling and 70 simultaneously loaded connected rooms. PostgreSQL also rejects a second application owner for the same database.
+- Local 100-player/50-game benchmarks completed 4,000 moves per backend. SQLite p95 61.08 ms / RSS 194 MiB; PostgreSQL p95 44.48 ms / RSS 187 MiB. Each game reached 80 plies, with synchronized 50-move batches spaced by 100 ms. These are short local Windows tests without the production CPU/memory cgroup limits, not guarantees for the user's server.
+- CI additionally runs real PostgreSQL 16, both backend runtime suites, read-only native AMD64/ARM64 containers, a 100-player SQLite container benchmark at 1 CPU/384 MiB, all three Compose templates, and restart persistence. Inspect the CI result for the exact published commit before deployment.
+- Version 2.0 deliberately starts with a fresh store. No 1.x data import or user-server deployment has been performed.

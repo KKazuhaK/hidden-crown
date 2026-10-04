@@ -13,7 +13,17 @@ jobs:
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: isolated-ci-postgres-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:isolated-ci-postgres-password@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -21,7 +31,13 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: npm run typecheck && npm test && npm run build && npm run test:selfhost
+      - run: npm run typecheck && npm test
+      - name: SQLite complete runtime checks
+        run: npm run test:selfhost
+        env:
+          TEST_DATABASE_URL: ''
+      - name: PostgreSQL complete runtime checks
+        run: npm run test:selfhost
       - name: Container runtime and persistent volume
         shell: bash
         run: |
@@ -31,10 +47,11 @@ jobs:
           printf '%s' 'isolated-container-test-password' > "$secret"
           sudo chown 1000:1000 "$secret"
           sudo chmod 600 "$secret"
-          docker run -d --name hc-test --read-only --tmpfs /tmp --cap-drop ALL \
+          gateway=$(docker network inspect bridge --format "{{range .IPAM.Config}}{{.Gateway}}{{end}}")
+          docker run -d --name hc-test --read-only --tmpfs /tmp --cap-drop ALL --memory=384m --cpus=1 --pids-limit=64 \
             --security-opt no-new-privileges -p 127.0.0.1:8794:8787 \
             -e PUBLIC_ORIGIN=http://127.0.0.1:8794 -e ADMIN_USERNAME=admin \
-            -e CREATE_LIMIT_PER_IP=50 -e CREATE_LIMIT_GLOBAL=200 \
+            -e CREATE_LIMIT_PER_IP=200 -e CREATE_LIMIT_GLOBAL=500 -e "TRUSTED_PROXIES=$gateway" \
             -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
             --mount "type=bind,src=$secret,dst=/run/secrets/admin_password,readonly" \
             -v hc-test-data:/app/data hidden-crown:test
@@ -56,6 +73,12 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8794/healthz
           node scripts/persistence-smoke.mjs verify
+          docker restart hc-test
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8794/healthz; then break; fi
+            sleep 1
+          done
+          node scripts/capacity-smoke.mjs
       - name: Nginx configuration syntax
         shell: bash
         run: |
@@ -121,12 +144,47 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8797/healthz
           node scripts/persistence-smoke.mjs prepare
-          sudo test -s "$DATA_DIR/hidden-crown.sqlite"
-          test "$(sudo stat -c '%u:%g' "$DATA_DIR/hidden-crown.sqlite")" = '1000:1000'
+          sudo test -s "$DATA_DIR/hidden-crown-v2.sqlite"
+          test "$(sudo stat -c '%u:%g' "$DATA_DIR/hidden-crown-v2.sqlite")" = '1000:1000'
           "${compose[@]}" restart
           for attempt in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:8797/healthz; then break; fi
             sleep 1
           done
           curl -fsS http://127.0.0.1:8797/healthz
+          node scripts/persistence-smoke.mjs verify
+      - name: Compose with existing PostgreSQL
+        shell: bash
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
+          HIDDEN_CROWN_IMAGE: hidden-crown:test
+          PUBLIC_ORIGIN: http://127.0.0.1:8799
+          HOST_PORT: '8799'
+          ADMIN_USERNAME: postgres-admin
+          ADMIN_PASSWORD: isolated-postgres-compose-password
+          HIDDEN_CROWN_URL: http://127.0.0.1:8799
+          HIDDEN_CROWN_ADMIN_USERNAME: postgres-admin
+          HIDDEN_CROWN_ADMIN_PASSWORD: isolated-postgres-compose-password
+          DATABASE_URL: postgresql://postgres:isolated-ci-postgres-password@host.docker.internal:5432/hc_compose
+        run: |
+          set -euo pipefail
+          docker exec "$PG_SERVICE_ID" createdb -U postgres hc_compose
+          compose=(docker compose -p hc-postgres -f docker-compose.postgres.yml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" up -d --pull never
+          trap '"${compose[@]}" logs; "${compose[@]}" down' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8799/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8799/healthz
+          node scripts/room-smoke.mjs
+          node scripts/join-smoke.mjs
+          node scripts/persistence-smoke.mjs prepare
+          "${compose[@]}" restart
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8799/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8799/healthz
           node scripts/persistence-smoke.mjs verify

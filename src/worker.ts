@@ -1,4 +1,5 @@
 import type { Room } from "./room";
+import { ruleRegistry } from './rules/registry';
 export { Room } from "./room";
 interface Env { ROOM: DurableObjectNamespace<Room>; ASSETS: Fetcher }
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -12,17 +13,26 @@ export default {
     }
     if (url.pathname === "/api/rooms") {
       if (request.method !== "POST") return new Response("POST required", { status: 405, headers: { Allow: "POST" } });
+      let ruleset;
+      try {
+        const raw = await request.text();
+        if (raw.length > 1024) throw new Error('bad_request');
+        const value = raw ? JSON.parse(raw) : {};
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'ruleset')) throw new Error('bad_request');
+        ruleset = ruleRegistry.selection(value.ruleset);
+      } catch { return Response.json({ code: 'invalid_ruleset' }, { status: 400 }); }
       for (let attempt = 0; attempt < 3; attempt++) {
         const bytes = crypto.getRandomValues(new Uint8Array(8));
         const roomId = Array.from(bytes, byte => alphabet[byte % alphabet.length]).join("");
         const tokens = { w: crypto.randomUUID(), b: crypto.randomUUID(), observer: crypto.randomUUID() };
         const stub = env.ROOM.get(env.ROOM.idFromName(roomId));
-        const response = await stub.fetch("https://room.internal/init", { method: "POST", body: JSON.stringify({ roomId, tokens }) });
+        const response = await stub.fetch("https://room.internal/init", { method: "POST", body: JSON.stringify({ roomId, tokens, ruleset }) });
         if (response.status === 409) continue;
         return new Response(response.body, { status: response.ok ? 201 : response.status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       }
       return new Response("Please retry", { status: 503 });
     }
+    if (url.pathname === '/api/rules' && request.method === 'GET') return Response.json({ rulesets: ruleRegistry.list() });
     const joinPath = /^\/api\/rooms\/([^/]+)\/join$/.exec(url.pathname);
     if (joinPath) {
       const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };

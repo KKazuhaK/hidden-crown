@@ -1,5 +1,4 @@
-# Standalone template: save as docker-compose.yml in /opt/hidden-crown.
-# First create ./data with owner 1000:1000 and mode 700.
+# Standalone: connects to your existing PostgreSQL; no database container or SQLite volume.
 services:
   hidden-crown:
     image: ${HIDDEN_CROWN_IMAGE:-ghcr.io/kkazuhak/hidden-crown:latest}
@@ -12,7 +11,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set an administrator password of 16 to 256 characters in .env}
       # Only the proxy addresses explicitly named here can supply the real client IP.
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:?Set a PostgreSQL connection URL in .env}
       DATABASE_PATH: ${DATABASE_PATH:-/app/data/hidden-crown-v2.sqlite}
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
       MAX_ACTIVE_ROOMS: ${MAX_ACTIVE_ROOMS:-256}
@@ -27,12 +26,6 @@ services:
       MAX_CONNECTIONS: ${MAX_CONNECTIONS:-512}
       MAX_ROOM_BYTES: ${MAX_ROOM_BYTES:-4194304}
       MAX_DATABASE_BYTES: ${MAX_DATABASE_BYTES:-1073741824}
-    volumes:
-      - type: bind
-        source: ${DATA_DIR:-./data}
-        target: /app/data
-        bind:
-          create_host_path: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     read_only: true

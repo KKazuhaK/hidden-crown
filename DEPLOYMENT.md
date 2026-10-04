@@ -1,151 +1,144 @@
-# Docker + Nginx 自托管
+# Hidden Crown 2.0：Docker Compose + Nginx
 
-当前生产部署使用 Node.js 24 + SQLite，所有房间、走棋与日志均保存在自己的服务器。无需 Cloudflare 账号或云数据库。一次只运行一个应用实例；多实例不能共享同一个 SQLite 文件来实现跨进程实时对局。
+Node.js 24 + WebSocket。留空 `DATABASE_URL` 使用 SQLite；填写 PostgreSQL URL 则连接现有 PostgreSQL 14+。Redis、MySQL 均不是依赖。源码仓库私有，GHCR 镜像和 [部署模板仓库](https://github.com/KKazuhaK/hidden-crown-deploy) 公开，可匿名拉取。
 
-## 使用 Compose 拉取镜像（推荐）
+## 连接你已有的 PostgreSQL
 
-服务器只需要 Docker Engine、Compose 插件，以及现有 Nginx 和 HTTPS 证书；无需安装 Node.js、SQLite 或下载源码。
+使用独立数据库和独立角色，数据库所有者应为应用角色。以下 SQL 由你在 PostgreSQL 管理工具中执行，密码换成自己的：
 
-从个人私有仓库 `KKazuhaK/hidden-crown` 的 Releases 下载 `hidden-crown-compose.zip`，上传到服务器并解压到独立目录。包内包含 Compose、`.env.example`、说明和 Nginx 示例配置。
-
-```bash
-unzip hidden-crown-compose.zip
-cp .env.example .env
-chmod 600 .env
-nano .env
+```sql
+CREATE ROLE hidden_crown LOGIN PASSWORD '替换为数据库密码';
+CREATE DATABASE hidden_crown OWNER hidden_crown;
 ```
 
-在 `.env` 中集中配置：
+应用启动时自动创建 `hc_` 前缀的表、索引和版本迁移记录。应用角色无需超级用户或创建其他数据库的权限，但需要创建及维护自己的表。不要连接其他项目正在使用的数据库。
+
+在服务器上：
+
+```bash
+sudo mkdir -p /opt/hidden-crown
+cd /opt/hidden-crown
+sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/docker-compose.postgres.yml
+sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/.env.example
+sudo cp .env.example .env
+sudo chmod 600 .env
+sudo nano .env
+```
+
+配置：
 
 ```dotenv
 PUBLIC_ORIGIN=https://chess.your-domain.com
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD='填写你自己的16至256字符密码'
+ADMIN_PASSWORD='你自己的16至256字符管理员密码'
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.0.0
 HOST_PORT=8787
-HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.2
-WAITING_TIMEOUT_MINUTES=15
+DATABASE_URL='postgresql://hidden_crown:URL编码后的数据库密码@host.docker.internal:5432/hidden_crown'
+PG_POOL_MAX=10
 TRUSTED_PROXIES=
 ```
 
-`PUBLIC_ORIGIN` 必须与浏览器访问的 HTTPS 地址完全一致。密码没有默认值；保留空密码会阻止启动。用单引号包住密码可保留 `$` 等字面字符，密码若包含单引号则按 Compose `.env` 语法转义。配置文件不会上传到 GitHub。管理员从 `/admin` 登录。
+管理员密码和数据库密码是两套凭证。URL 中用户名、密码的 `@`、`:`、`/`、`#`、`%` 等保留字符需要进行百分号编码。可设置 `DATABASE_URL_FILE` 读取只读挂载的连接文件；不要把连接文件提交到仓库。
 
-源码仓库保持私有；部署镜像按用户授权设为公开，普通拉取不需要 GitHub 登录。完成配置后：
+`docker-compose.postgres.yml` 是完整模板，只启动应用，不启动额外数据库，也不挂载 SQLite 数据目录。它添加 `host.docker.internal:host-gateway`，方便连接宿主机上的 PostgreSQL。容器内的 `127.0.0.1` 是容器自己。宿主 PostgreSQL 必须监听容器可以访问的地址，`pg_hba.conf` 也要允许应用所在 Docker 子网和应用角色；只开放必要的来源。如果 PostgreSQL 是已有容器，也可让应用加入它的 Docker 网络，并在 URL 中使用数据库服务名。
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-docker compose logs --tail=50
+sudo docker compose config --quiet
+sudo docker compose pull
+sudo docker compose up -d
+sudo docker compose ps
+sudo docker compose logs --tail=50
 ```
 
-Docker 自动选择 AMD64 或 ARM64 镜像。SQLite 使用命名卷 `hidden-crown-data`，重建、升级不会丢掉对局。默认仅向宿主机 `127.0.0.1:8787` 发布端口。保持部署目录/Compose 项目名稳定，避免另建一个空数据卷；不要运行 `docker compose down -v`。
+对外访问前配置现有 Nginx 和 HTTPS。应用默认只向宿主机 `127.0.0.1:8787` 发布端口。`PUBLIC_ORIGIN` 必须与浏览器使用的 HTTPS 地址一致；管理员访问 `/admin`。
 
-普通配置修改后执行 `docker compose up -d`。`WAITING_TIMEOUT_MINUTES` 仅用于新数据库初始化；已有等待时限通过管理员后台修改。升级时修改 `HIDDEN_CROWN_IMAGE` 的版本，然后执行 `docker compose pull && docker compose up -d`；版本固定便于回滚，也可主动选用 `latest` 自动跟随稳定发布。
+## SQLite 快速测试或独立部署
 
-## 使用 `/opt/hidden-crown/data` 保存数据
-
-仓库提供独立的 [docker-compose.bind.yml](docker-compose.bind.yml) 模板，适合把配置和数据都放在 `/opt/hidden-crown`。首次部署时，将此模板保存为该目录的 `docker-compose.yml`，同时把 `.env.example` 保存为 `.env`：
+`docker-compose.yml` 使用命名卷；`docker-compose.bind.yml` 使用 `./data`。公开部署仓库的 `docker-compose.yml` 对应 bind 模板，适合你的目录习惯：
 
 ```text
 /opt/hidden-crown/
-├── docker-compose.yml  # 使用 docker-compose.bind.yml 的内容
+├── docker-compose.yml
 ├── .env
 └── data/
-    ├── hidden-crown.sqlite
-    └── ...            # SQLite 的 WAL/SHM 等文件
+    ├── hidden-crown-v2.sqlite
+    └── ...                  # WAL/SHM 文件
 ```
+
+首次安装可运行公开仓库的 `install.sh`，或下载模板后手动设置：
 
 ```bash
 sudo mkdir -p /opt/hidden-crown
 sudo install -d -m 700 -o 1000 -g 1000 /opt/hidden-crown/data
 cd /opt/hidden-crown
-# 将模板放入此目录，编辑 .env 中的域名和管理员密码。
-chmod 600 .env
-docker compose pull
-docker compose up -d
-docker compose ps
+sudo wget -O docker-compose.yml https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/docker-compose.yml
+sudo wget -O .env.example https://raw.githubusercontent.com/KKazuhaK/hidden-crown-deploy/main/.env.example
+sudo cp .env.example .env
+sudo chmod 600 .env
+sudo nano .env
+# 留空 DATABASE_URL，设置域名和管理员密码。
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
-镜像以 UID/GID `1000:1000` 运行，因此必须先创建具有正确所有权的数据目录；模板不会自动创建一个 root 所有的目录。`DATA_DIR` 默认是 Compose 文件旁的 `./data`，也可在 `.env` 中指定其他绝对路径。Nginx 仍反代到 `127.0.0.1:8787`。
+应用以 UID/GID `1000:1000` 运行；bind 模板要求预先创建正确所有权的数据目录。SQLite 的查询、事务和磁盘写入在独立 Worker 线程执行，主线程处理连接及规则。默认 WAL + FULL 同步，启用外键和级联删除。数据结构、对局和管理功能与 PostgreSQL 一致。
 
-源码仓库为私有：登录 GitHub 后可查看或下载模板，服务器不能直接匿名 `curl` 私有仓库的 Raw URL。只需上传这两个配置文件，镜像可以匿名拉取。现有命名卷部署不要直接替换模板；切换存储前先停机，将原数据卷的全部内容复制到新目录并设置所有权，否则会打开一个新数据库。
+本地不需要 PostgreSQL：安装 Node.js 24 后，`npm ci`、设置 `ADMIN_PASSWORD`，再运行 `npm run dev`。默认使用 `data/hidden-crown-v2.sqlite`。填写本地 `DATABASE_URL` 可以验证 PostgreSQL。
 
-备份目录时先执行 `docker compose stop`，完整备份 `data/` 后再执行 `docker compose start`。更新镜像和重建容器都会继续使用同一目录。
+## 从 1.x 重新部署
 
-## 可选：使用密码文件
+2.0 是新的存储结构，按本次重新部署决定使用新库，不自动导入 1.x 对局。SQLite 默认文件改为 `hidden-crown-v2.sqlite`，原文件保留。PostgreSQL 使用新建的 `hidden_crown` 数据库。原链接不会在新库中恢复。
 
-默认把账号密码集中在 `.env`，无需另建 secrets 文件。偏好密码文件的用户可用 `docker-compose.secrets.yml` 覆盖：把 `.env` 中 `ADMIN_PASSWORD` 设为 `using-password-file`（满足基础配置检查，最终容器环境会清空此值），并创建文件：
+先从旧后台导出需要保留的对局。停止旧 Compose 项目后，在部署目录换成所需 2.0 模板、设置新 `.env`，再拉取并启动。不要删除旧数据目录或运行旧项目的 `down -v` 来清理数据；保留旧数据库便于查阅或回退。回退 1.x 镜像时使用原来的模板和原数据库。
 
-```bash
-mkdir -p secrets
-chmod 700 secrets
-nano secrets/admin-password.txt
-sudo chown 1000:1000 secrets/admin-password.txt
-sudo chmod 600 secrets/admin-password.txt
-docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
-```
+后续 2.x 升级有版本迁移记录；迁移在事务内执行。保持项目名、数据目录或数据库 URL 不变，修改镜像版本后执行 `docker compose pull` 和 `docker compose up -d`。
 
-更新和查看日志时也使用同样的两个 `-f` 参数。
+## Nginx 与真实客户端 IP
 
-## 可选：从源码构建
-
-源码目录中仍可以使用上述 `.env` 配置运行：
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-```
-
-## Nginx
-
-把 `deploy/nginx.conf` 放入 Nginx 的 `http {}` 配置范围（例如 `conf.d/hidden-crown.conf`），把 `deploy/hidden-crown-proxy.conf` 放到 `/etc/nginx/snippets/hidden-crown-proxy.conf`。替换示例域名和证书路径，后端端口与 `.env` 的 `HOST_PORT` 保持一致。保留 WebSocket 的 Upgrade/Connection 头和超时设置。
+`deploy/nginx.conf` 放在 Nginx `http {}` 范围内，代理片段保存为 `/etc/nginx/snippets/hidden-crown-proxy.conf`。替换域名和 HTTPS 证书路径，反代至 `http://127.0.0.1:8787`，保留 WebSocket Upgrade/Connection 头。
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-反代配置会覆盖客户端传来的 `X-Forwarded-For`。`.env` 的 `TRUSTED_PROXIES` 只填写应用容器实际看到的 Nginx 来源 IP（精确地址，逗号分隔；不支持 CIDR）。宿主机 Nginx 连接 Docker 发布端口时，这通常是该 Compose 网络的网关；可通过 `docker network inspect <项目名>_default` 核对。默认留空会忽略转发头，安全但会把同一代理后的用户合并计入同一个 IP 限额。不要信任任意地址或使用 `$proxy_add_x_forwarded_for` 来保留不可信前缀。
+代理片段覆盖 `X-Forwarded-For`。`TRUSTED_PROXIES` 填应用实际看到的 Nginx 来源 IP，精确地址、逗号分隔。宿主 Nginx 常从 Compose 网关连接，可用 `docker network inspect <项目名>_default` 核对。留空会忽略转发头，所有代理后的玩家会共享该代理的 IP 限额，因此正式开放前必须正确设置。不要信任任意地址，也不要保留客户端提供的不可信转发链。
 
-Nginx 在容器内时，需要让它和应用在同一个受控 Docker 网络中，并将反代 upstream 改为 `http://hidden-crown:8787`。同时填写它的确切容器 IP；不要把后端端口直接暴露到公网。
+## 可调容量和防护
 
-## 镜像发布机制
-
-版本标签 `v1.0.0` 等触发 Release，先在原生 AMD64、ARM64 runner 验证引擎、服务端、容器、Compose 登录、持久化与 Nginx 配置，再构建两种架构并发布到 `ghcr.io/kkazuhak/hidden-crown`。每个发布包括精确版本标签、稳定版 `latest`、最近发布版 `beta` 和只含部署配置的 `hidden-crown-compose.zip`。手动发布也必须选择已有版本标签；精确版本不重复覆盖。
-
-镜像公开用于匿名拉取，源码仓库保持私有。发布包内的 `.env.example` 固定为该次发布的镜像版本。已完成的发布可在 [Releases](https://github.com/KKazuhaK/hidden-crown/releases) 查看；只有 Release 工作流成功后对应镜像才能拉取。升级前先备份数据卷。
-
-## 默认防护与可调限额
-
-| 范围 | 默认值 | 配置 |
+| 配置 | 默认值 | 含义 |
 | --- | --- | --- |
-| 单 IP 创建房间 | 10 分钟容量 5，持续补充 | `CREATE_LIMIT_PER_IP` |
-| 全站创建房间 | 10 分钟容量 50，持续补充 | `CREATE_LIMIT_GLOBAL` |
-| 未开始对局等待上限 | 创建后 15 分钟 | `WAITING_TIMEOUT_MINUTES`（首次初始化）；后台持久化设置优先 |
-| 保存房间总数，包含已结束对局 | 1000 | `MAX_ROOMS` |
-| WebSocket 连接总数 | 512 | `MAX_CONNECTIONS` |
-| SQLite 主库页空间上限 | 256 MiB，另需 WAL/日志余量 | `MAX_DATABASE_BYTES` |
-| 单房间状态和日志 | 4 MiB | `MAX_ROOM_BYTES` |
-| HTTP 单 IP / 全站 | 120 / 2000 次每分钟容量 | 固定 |
-| 登录单 IP / 全站 | 5 / 30 次每 15 分钟容量 | 固定 |
-| WebSocket 握手单 IP | 30 次每分钟容量 | 固定 |
-| 单 WebSocket 消息 | 每秒容量 30 | 固定 |
-| 房间连接 / 未认证连接 | 16 / 8 | 固定 |
-| 未认证连接期限 | 15 秒 | 固定 |
+| `CREATE_LIMIT_PER_IP` | 5 | 每 10 分钟创建令牌容量，持续补充 |
+| `CREATE_LIMIT_GLOBAL` | 100 | 全站每 10 分钟创建令牌容量 |
+| `WAITING_TIMEOUT_MINUTES` | 15 | 新库的等待开局时限；已有库用后台设置 |
+| `MAX_ROOMS` | 10000 | 全部保存对局的数量上限 |
+| `MAX_ACTIVE_ROOMS` | 256 | 未结束房间的准入上限，包含等待房间 |
+| `MAX_LOADED_ROOMS` | 256 | 进程中加载的房间上限 |
+| `MAX_CONNECTIONS` | 512 | WebSocket 总连接上限 |
+| `MAX_CACHE_BYTES` | 64 MiB | 房间缓存的保守字节预算；不是进程 RSS 硬上限 |
+| `MAX_ROOM_BYTES` | 4 MiB | 每个房间快照、走棋和事件的存储上限 |
+| `MAX_STORED_BYTES` | 768 MiB | 保存对局数据达到此值时拒绝创建新房间；已有对局可继续增长至单房间上限 |
+| `MAX_DATABASE_BYTES` | 1 GiB | SQLite 主库页空间上限，另留 WAL 余量；不限制 PostgreSQL 物理大小 |
+| `PG_POOL_MAX` | 10 | PostgreSQL 连接池总数，包括 1 个实例所有权连接 |
 
-限额按有界 token bucket 实现。伪造转发头不会绕过默认 IP 限额。未知房间请求不创建数据库记录；创建有全站串行准入和硬数量限制。达到资源上限后拒绝新操作，已有日志不会被静默删掉；管理员可先导出，再删除不再需要的房间。应用仅缓存最多 64 个房间，并将缓存内状态/日志的 JSON 字节总量限制到 24 MiB（解析后的实际堆占用更大）；同时限制单房间消息队列、消息大小和慢客户端发送缓冲。
+限流、载入房间、每房间队列、每连接输入队列、消息大小、慢客户端发送缓冲均有界。空闲房间按最近使用顺序从缓存移出，不移除在线或处理中房间。管理员可以从 `/api/admin/metrics` 查看后端、房间数量、连接、内存和事件循环延迟，不会返回王冠或凭证。
 
-管理员登录 session 保存在服务器，Cookie 为 HttpOnly/SameSite=Strict，HTTPS 时设置 Secure，8 小时过期。结束/删除/退出登录要求 Origin 和 CSRF 凭证；退出或凭证修改会撤销 session。管理员观看连接独立于玩家和其他管理员。结束对局会保存原因与审计记录；删除会断开全部连接并移除对局和日志，保留有界操作审计，不会被延迟的连接关闭事件重新创建。
+等待超时从创建起计算，重连不重置。仅清理 `lobby` / `crown_select`；开始及结束的对局保留。每 5 秒分批扫描，后台缩短时限会触发清理。历史达到容量后管理员可先导出，再删除，不会自动删除已结束对局。
 
-后台可设置 1–1440 分钟的等待开局上限，设置保存在 SQLite 中，重启后保留。超时仅清理等待玩家与选择王冠的房间，时间从创建时计算，加入或重连不重置。对弈中及已结束的记录保留。服务启动、创建/加入/列表请求以及每 5 秒的后台扫描都会清理超时房间；缩短设置会立即清理已超时的房间，连接断开且记录永久删除。`WAITING_TIMEOUT_MINUTES` 仅指定新数据库的初始值，不覆盖已有后台设置。
+管理员会话存储在所选数据库，Cookie 为 HttpOnly/SameSite=Strict，HTTPS 下 Secure，8 小时过期。变更操作要求 Origin 和 CSRF。退出及账号密码改变撤销会话。删除事务通过外键清除走棋、事件和房间关联的审计记录，只保留不关联房间数据的删除操作审计；延迟的消息或关闭事件不能重建被删除对局。
 
-管理员列表的“玩家链接”可获取、复制或打开对应白方/黑方入口；请仅分享给对应玩家，因为专属链接会替换该玩家已有连接。玩家及管理员观战界面的走棋回放支持拖动时间线、逐步查看及点击走棋记录跳转；回放不会改变服务端棋局，查看历史期间不能提交游戏操作。
+默认容器为非 root、只读根文件系统、移除 capabilities、限制 384 MiB 内存 / 1 CPU / 64 个进程，并轮转日志。这些是可调整的防护边界，不是已验证的服务器人数保证。约 100 人在线已做本地模拟，实际服务器仍应验证 CPU、内存和磁盘性能。
 
-Docker 还限制 384 MiB 内存、1 CPU、64 个进程，使用非 root 用户、只读根文件系统、移除 capabilities，并轮转运行日志。应用限流不能吸收超过服务器带宽的网络攻击；公网入口仍由 Nginx/上游网络防护承担。
+## 单实例边界与扩展
 
-## 数据备份与旧 Cloudflare 模式
+目前一个应用实例拥有实时连接及房间队列。PostgreSQL 通过会话 advisory lock 阻止第二个应用同时占用同一数据库，避免缓存状态和广播分裂。不要直接使用 `docker compose --scale`。将来多实例需要在 `RoomManager` 边界增加房间归属与路由，并增加跨实例广播；届时再接入 Redis。
 
-备份前停止应用或使用 SQLite 在线备份工具；不要只复制正在写入的主库而遗漏 WAL。命名卷包含 `hidden-crown.sqlite` 及其 WAL 文件。请勿运行 `docker compose down -v`，这会删除数据卷。
+规则实现通过 `RuleSet` / `RuleRegistry` 接口注册，房间保存固定的玩法 ID、版本和选项。新的胜负条件、开局布局和额外动作不需要改动数据库或认证层。详见 README 的扩展接口部分。
 
-旧的 `src/room.ts` / `wrangler.jsonc` 适配器仍保留用于兼容测试，共用棋局核心。**当前全局管理员和资源准入防护由自托管 Node 服务实现，不能把 Wrangler 预览当成具备同等管理能力的生产部署。** 两种后端的存储相互独立，旧 `.wrangler/` 数据不会自动迁移到 SQLite。
+## 备份与其他部署文件
 
-实现参考：[Nginx WebSocket 反代](https://nginx.org/en/docs/http/websocket.html)、[Docker 多平台构建](https://docs.docker.com/build/ci/github-actions/multi-platform/)、[Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/)。
+PostgreSQL 用现有数据库备份体系或 `pg_dump`；备份的是 PostgreSQL 数据库，应用容器的数据目录不是 PostgreSQL 备份。SQLite 停止应用后备份完整 `data/`，或使用 SQLite 在线备份工具，不能只复制正在写入的主库而遗漏 WAL。
+
+`docker-compose.secrets.yml` 可提供管理员密码文件；`.env` 用 `ADMIN_PASSWORD=using-password-file` 满足基础配置检查，文件挂载为应用用户可读。`docker-compose.build.yml` 支持源码构建。Releases 的 `hidden-crown-compose.zip` 包含所有模板、环境示例和 Nginx 文件。
+
+Cloudflare 适配器保留并共用规则和房间核心；它不具备自托管服务的全局管理员及容量管理，不作为本次生产部署方案。

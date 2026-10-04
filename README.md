@@ -2,7 +2,18 @@
 
 Two-player online chess with one secret crown per side. Capture the opposing crown to win. There is no check or checkmate. The browser only highlights server-supplied moves.
 
-The production server now supports self-hosted **Docker + Nginx**, using Node.js 24, SQLite and WebSockets. It shares the same pure chess engine and room core with the retained Cloudflare adapter. See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment, resource limits, admin credentials and GHCR publishing.
+The production server now supports self-hosted **Docker + Nginx**, using Node.js 24, SQLite or PostgreSQL, and WebSockets. It shares the same pure chess engine and room core with the retained Cloudflare adapter. See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment, resource limits, admin credentials and GHCR publishing.
+
+## Compose deployment
+
+Download `hidden-crown-compose.zip` from the private repository's Releases. Copy `.env.example` to `.env`, set `PUBLIC_ORIGIN`, `ADMIN_USERNAME` and your own `ADMIN_PASSWORD` (16–256 characters), then run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+No source checkout or server-side build is required. The package includes Nginx snippets; SQLite is persisted in a named Docker volume. The optional `docker-compose.secrets.yml` uses a password file instead. See [DEPLOYMENT.md](DEPLOYMENT.md) for complete steps.
 
 ## Local development
 
@@ -40,7 +51,7 @@ npm run build
 npm run test:selfhost
 ```
 
-`test:selfhost` starts isolated local servers and checks actual HTTP/WebSocket behavior, administrator authentication/authorization, CSRF, live god views, force-end, deletion, restart persistence and resource-limit rejection. It writes only ignored test fixtures. It needs ports 8791–8793 available.
+`test:selfhost` starts isolated local servers and checks actual HTTP/WebSocket behavior, administrator authentication/authorization, CSRF, live god views, force-end, deletion, restart persistence and resource-limit rejection. It writes only ignored test fixtures. It needs ports 8791–8793, 8803 and (for PostgreSQL) 8805 available. Without TEST_DATABASE_URL it uses SQLite. Set TEST_DATABASE_URL to an isolated PostgreSQL test server with CREATE DATABASE permission to repeat the same suite against PostgreSQL; the suite creates and removes only its own UUID-named test databases.
 
 For the longer room and join suites against a running self-hosted server, explicitly provide the test administrator credentials:
 
@@ -54,16 +65,44 @@ node scripts/join-smoke.mjs
 
 These checks create test rooms. When running several suites from one IP, use a disposable server with appropriately raised creation limits. `scripts/persistence-smoke.mjs prepare`, a server restart, then `verify` provides an additional stored-state check; `test:selfhost` also performs a complete restart check itself.
 
-CI repeats tests on native Linux AMD64 and ARM64 and validates the Docker runtime plus Nginx syntax. Tag releases publish a multi-platform GHCR image. The private repository is `KKazuhaK/hidden-crown`; private GHCR pulls require login with `read:packages` access. The image address becomes available after the first successful tag release.
+CI repeats tests on native Linux AMD64 and ARM64 and validates the Docker runtime plus Nginx syntax. Tag releases publish a multi-platform GHCR image. The private repository is `KKazuhaK/hidden-crown`; the deployment image is public for anonymous pulls. The image address becomes available after the first successful tag release.
 
 See [VALIDATION.md](VALIDATION.md) for completed checks and remaining external validation. Automated games do not substitute for the recorded research session in `BUILD_SPEC.md`.
 
 ## Project layout
 
 - `src/engine.ts`: pure chess movement/application/end detection.
-- `src/room-core.ts`: shared room rules, role views, persistence and message handling.
-- `server/`: self-hosted HTTP/WebSocket runtime, SQLite and bounded rate limiting.
+- `src/rules/`: versioned rules, lifecycle, legal moves, command validation and win conditions.
+- `src/room-core.ts`: transport-neutral room lifecycle, authentication, redacted views and transactional commits.
+- `src/persistence.ts`: asynchronous room repository contract.
+- `server/`: self-hosted HTTP/WebSocket runtime, room ownership/cache and bounded rate limiting.
+- `server/database/`: PostgreSQL pool, SQLite worker, common transaction API and versioned migrations.
+- `server/storage.ts`: normalized snapshots, append-only moves/events, sessions/settings/audit repository.
 - `public/`: vanilla JS board/game UI and administrator dashboard.
 - `Dockerfile`, `docker-compose.yml`, `deploy/`: container and Nginx deployment.
 - `.github/workflows/`: native architecture verification and GHCR releases.
 - `src/room.ts`, `src/worker.ts`, `wrangler.jsonc`: retained Cloudflare adapter, without the self-hosted global admin/admission layer.
+
+## Storage and extension interfaces (2.0)
+
+Empty `DATABASE_URL` selects SQLite for immediate local testing; a PostgreSQL URL selects an asynchronous pool. Production Compose can connect to an existing PostgreSQL with `docker-compose.postgres.yml`. No Redis/MySQL service is required. This major version uses fresh `hc_` tables and defaults to `hidden-crown-v2.sqlite`; 1.x records are not automatically imported, and the original SQLite file is preserved.
+
+A commit atomically replaces a position snapshot and appends new move/event rows. History is not serialized into the snapshot. A revision check rejects stale concurrent writes and callbacks after deletion; foreign keys cascade deletion. Schema migrations run transactionally and retain a version record.
+
+`RuleSet` is a pure, trusted-code interface for the existing 8x8 chess board/protocol family. Register an implementation in `src/rules/registry.ts` with a unique ID/version, option validation, an initial position, join/setup lifecycle, legal move generation, and `applyCommand`. The latter returns a new state plus private log events, or a safe public error. All built-in gameplay decisions now dispatch through this interface. `rule_action` provides a bounded JSON command envelope for future actions. Hidden rule data belongs in `state.ruleState`, which is never included in player or admin view payloads. Explicitly add any new public presentation fields to the protocol rather than exposing the entire rule state. New non-chess board types require a separate renderer/protocol contract.
+
+Rooms retain their ID, version and normalized options; register changed semantics under a new version rather than altering an existing implementation. Removing a version still used by stored rooms prevents loading those rooms. Replay uses the persisted public initial position, not an assumption about the original piece layout. Plugins must not put hidden information into initial-position metadata, public options, or error-dependent behavior.
+
+```http
+GET /api/rules
+POST /api/rooms
+Content-Type: application/json
+
+{"ruleset":{"id":"hidden-crown","version":1,"options":{"castling":false,"enPassant":true,"drawPlyLimit":100}}}
+```
+
+Omitting the body keeps the original default game. The shipped UI continues to create that default; additional mode selection UIs can consume `/api/rules`. Existing frontend authentication and private-link behavior remains unchanged.
+
+`RoomManager` owns room loading, per-room command queues, presence, expiration and bounded caches. A future distributed implementation must add a room-owner directory/router and cross-instance broadcast before scaling application instances; changing database alone is insufficient. PostgreSQL currently enforces one application owner per database. Redis may provide shared limits/broadcast later.
+
+`npm run test:capacity` creates 100 simulated players in 50 isolated games and writes timings to ignored test artifacts. Set `TEST_DATABASE_URL` to select a disposable PostgreSQL database. The tests use real database engines and real HTTP/WebSocket connections; the local timings are not a production capacity promise.

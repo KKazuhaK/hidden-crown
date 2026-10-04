@@ -2,8 +2,8 @@
 // already-redacted view; replay never requests privileged data.
 export function replayAt(view, ply) {
   const count = Math.max(0, Math.min(view.moves.length, Math.trunc(ply)));
-  const pieces = {}, board = Array(64).fill(null);
-  for (const piece of Object.values(view.pieces)) {
+  const pieces = view.initialPosition ? structuredClone(view.initialPosition.pieces) : {}, board = view.initialPosition ? [...view.initialPosition.board] : Array(64).fill(null);
+  for (const piece of view.initialPosition ? [] : Object.values(view.pieces)) {
     const type = piece.id[1], file = 'abcdefgh'.indexOf(piece.id[2] ?? (type === 'K' ? 'e' : 'd'));
     const rank = piece.color === 'w' ? (type === 'P' ? 1 : 0) : (type === 'P' ? 6 : 7);
     const square = rank * 8 + file;
@@ -25,5 +25,7 @@ export function replayAt(view, ply) {
     }
     if (move.promotion) { pieces[move.pieceId].type = move.promotion; pieces[move.pieceId].promoted = true; }
   }
-  return { ...view, pieces, board, moves: view.moves.slice(0, count), turn: count % 2 ? 'b' : 'w', legalMoves: [], phase: 'playing' };
+  const startingTurn = view.initialPosition?.turn ?? 'w';
+  const turn = count === view.moves.length ? view.turn : view.moves[count]?.color ?? startingTurn;
+  return { ...view, pieces, board, moves: view.moves.slice(0, count), turn, legalMoves: [], phase: 'playing' };
 }

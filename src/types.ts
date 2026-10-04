@@ -29,6 +29,10 @@ export interface MoveRecord extends Move {
   thinkMs: number;
 }
 export interface GameState {
+  revision: number;
+  ruleset: RuleSelection;
+  initialPosition: InitialPosition;
+  ruleState: Record<string, unknown>;
   roomId: string;
   createdAt: number;
   phase: Phase;
@@ -44,17 +48,20 @@ export interface GameState {
   claimed: { w: boolean; b: boolean };
   playStartedAt: number | null;
   lastMoveAt: number | null;
-  result: null | { winner: Color | null; reason: "crown_captured" | "resign" | "no_moves" | "agreement" | "100_ply" | "admin" };
+  result: null | { winner: Color | null; reason: "crown_captured" | "resign" | "no_moves" | "agreement" | "100_ply" | "move_limit" | "admin" };
   crowns: { w: string | null; b: string | null };
   tokens: { w: string; b: string; observer: string };
 }
 export interface LogEvent {
   t: number;
   actor: Role | "system" | "admin";
-  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "draw_offered" | "draw_declined" | "draw_accepted" | "resign" | "game_ended";
+  type: "room_created" | "seat_claimed" | "joined" | "left" | "crown_locked" | "play_started" | "move" | "draw_offered" | "draw_declined" | "draw_accepted" | "resign" | "game_ended" | "rule_action";
   data?: Record<string, unknown>;
 }
 export interface View {
+  revision: number;
+  ruleset: RuleSelection;
+  initialPosition: InitialPosition;
   role: Role;
   phase: Phase;
   pieces: GameState["pieces"];
@@ -73,3 +80,11 @@ export interface View {
   legalMoves?: Move[];
 }
 export interface Links { white: string; black: string; observer: string }
+export interface RuleSelection { id: string; version: number; options: Record<string, unknown> }
+export type InitialPosition = Pick<GameState, "pieces" | "board" | "turn">;
+export type GameCommand =
+  | { type: 'select_crown'; pieceId: string }
+  | { type: 'move'; from: number; to: number; promotion?: Promotion }
+  | { type: 'respond_draw'; accept: boolean }
+  | { type: 'offer_draw' | 'resign' }
+  | { type: 'rule_action'; action: string; payload: Record<string, unknown> };

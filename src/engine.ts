@@ -94,7 +94,7 @@ function sameMove(a: Move, b: Move): boolean {
   return Object.keys(aa).length === Object.keys(bb).length && Object.keys(aa).every(key => aa[key] === bb[key]);
 }
 
-export function applyMove(state: GameState, move: Move, now: number): { state: GameState; record: MoveRecord } {
+export function advancePosition(state: GameState, move: Move, now: number): { state: GameState; record: MoveRecord } {
   if (state.phase !== "playing" || state.result || !pseudoLegalMoves(state, state.turn).some(candidate => sameMove(candidate, move))) throw new Error("Illegal move");
   const next = structuredClone(state), piece = next.pieces[move.pieceId];
   const wasPawn = piece.type === "P", direction = piece.color === "w" ? 8 : -8;
@@ -119,9 +119,15 @@ export function applyMove(state: GameState, move: Move, now: number): { state: G
   const record: MoveRecord = { ...move, ply: next.ply, color: state.turn, notation, at: now,
     thinkMs: Math.max(0, now - (state.lastMoveAt ?? state.playStartedAt ?? now)), ...(captured ? { captured } : {}) };
   next.moves.push(record);
-  next.result = checkEnd(next, record);
-  if (next.result) next.phase = "ended";
   return { state: next, record };
+}
+
+// Retained for callers of the original engine. RoomCore dispatches through RuleSet.
+export function applyMove(state: GameState, move: Move, now: number) {
+  const applied = advancePosition(state, move, now);
+  applied.state.result = checkEnd(applied.state, applied.record);
+  if (applied.state.result) applied.state.phase = 'ended';
+  return applied;
 }
 
 export function checkEnd(state: GameState, record: MoveRecord): GameState["result"] {

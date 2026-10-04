@@ -10,7 +10,7 @@ RUN npm run build
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 DATABASE_PATH=/app/data/hidden-crown.sqlite
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 DATABASE_PATH=/app/data/hidden-crown-v2.sqlite
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && mkdir /app/data && chown node:node /app/data
 COPY --from=build /app/dist ./dist

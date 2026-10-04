@@ -1,12 +1,12 @@
-import { pseudoLegalMoves } from "./engine";
-import type { GameState, Links, LogEvent, Promotion, Role, View } from "./types";
+import { ruleRegistry } from './rules/registry';
+import type { GameCommand, GameState, Links, LogEvent, Role, View } from "./types";
 
 export type ClientMessage =
+  | GameCommand
   | { type: "hello"; token: string }
-  | { type: "select_crown"; pieceId: string }
-  | { type: "move"; from: number; to: number; promotion?: Promotion }
-  | { type: "respond_draw"; accept: boolean }
-  | { type: "offer_draw" | "resign" | "get_log" | "get_links" | "ping" };
+  | { type: 'get_log' }
+  | { type: 'get_links' }
+  | { type: 'ping' };
 export type ServerMessage =
   | { type: "welcome"; role: Role }
   | { type: "state"; view: View }
@@ -28,6 +28,9 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
         if (![m.from, m.to].every(s => Number.isInteger(s) && s >= 0 && s < 64) || (m.promotion !== undefined && !["Q", "R", "B", "N"].includes(m.promotion))) return null;
         allowed = ["from", "to", "promotion"]; break;
       case "respond_draw": if (typeof m.accept !== "boolean") return null; allowed = ["accept"]; break;
+      case 'rule_action':
+        if (typeof m.action !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(m.action) || !m.payload || typeof m.payload !== 'object' || Array.isArray(m.payload)) return null;
+        allowed = ['action', 'payload']; break;
       case "offer_draw": case "resign": case "get_log": case "get_links": case "ping": allowed = []; break;
       default: return null;
     }
@@ -39,13 +42,14 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
 export function viewFor(state: GameState, role: Role, connected: View["connected"], now = Date.now()): View {
   // Explicit allowlist: adding server-only state fields cannot accidentally disclose them.
   const view: View = {
+    revision: state.revision, ruleset: state.ruleset, initialPosition: state.initialPosition,
     role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn, moves: state.moves,
     connected, playStartedAt: state.playStartedAt, lastMoveAt: state.lastMoveAt, serverNow: now,
     crownLocked: { w: !!state.crowns.w, b: !!state.crowns.b }, drawOffer: state.drawOffer, result: state.result
   };
   if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
   if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
-  if (role === state.turn && state.phase === "playing") view.legalMoves = pseudoLegalMoves(state, state.turn);
+  if (role === state.turn && state.phase === "playing") view.legalMoves = ruleRegistry.resolve(state.ruleset).legalMoves(state, state.turn);
   return view;
 }
 

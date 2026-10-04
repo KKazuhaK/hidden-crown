@@ -4,6 +4,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import WebSocket from 'ws';
+import pg from 'pg';
+const postgresAdmin = process.env.TEST_DATABASE_URL, createdDatabases = new Set();
 const password = 'local-test-only-hidden-crown', username = 'researcher';
 const sockets = [], children = [];
 let checks = 0;
@@ -13,16 +15,23 @@ const directory = new URL(`../test-artifacts/selfhost-${randomUUID()}/`, import.
 await mkdir(directory, { recursive: true });
 async function start(port, extra = {}, database = `test-artifacts/selfhost-${directory.pathname.split('/').at(-2)}/${port}.sqlite`) {
   const base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['dist/server.mjs'], { env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', PUBLIC_ORIGIN: base, DATABASE_PATH: database, ADMIN_USERNAME: username, ADMIN_PASSWORD: password, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let databaseUrl = '';
+  if (postgresAdmin) {
+    database = `hc_smoke_${directory.pathname.split('/').at(-2).replaceAll('-', '_')}_${port}`;
+    if (!createdDatabases.has(database)) { const admin = new pg.Client({ connectionString: postgresAdmin }); await admin.connect(); try { await admin.query(`CREATE DATABASE ${database}`); createdDatabases.add(database); } finally { await admin.end(); } }
+    const url = new URL(postgresAdmin); url.pathname = '/' + database; databaseUrl = url.href;
+  }
+  const child = spawn(process.execPath, ['dist/server.mjs'], { env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', PUBLIC_ORIGIN: base, DATABASE_PATH: database, DATABASE_URL: databaseUrl, ADMIN_USERNAME: username, ADMIN_PASSWORD: password, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child); let output = ''; child.stdout.on('data', chunk => output += chunk); child.stderr.on('data', chunk => output += chunk);
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline && child.exitCode === null) {
-    if (output.includes('listening on')) return { base, child, database };
+    if (output.includes('listening on')) return { base, child, database, databaseUrl };
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   throw new Error(`Server did not start: ${output}`);
 }
 async function stop(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM');
   await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error('Shutdown timeout')), 12000).unref())]);
 }
@@ -30,8 +39,8 @@ async function request(base, path, method = 'GET', body, headers = {}) {
   const response = await fetch(base + path, { method, headers: { ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   return { status: response.status, headers: response.headers, data: await response.json() };
 }
-async function connect(base, room, role, adminHeaders) {
-  const frames = [], ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws/${room.roomId}${adminHeaders ? '?admin=1' : ''}`, { headers: adminHeaders ?? {} });
+async function connect(base, room, role, adminHeaders, clientHeaders = {}) {
+  const frames = [], ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws/${room.roomId}${adminHeaders ? '?admin=1' : ''}`, { headers: adminHeaders ?? clientHeaders });
   sockets.push(ws); let closed = null;
   ws.on('error', () => {}); ws.on('close', code => closed = code); ws.on('message', data => frames.push(JSON.parse(data)));
   if (!adminHeaders) ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', token: new URL(room.links[role], base).hash.slice(3) })));
@@ -54,6 +63,9 @@ async function upgradeStatus(base, room, headers = {}, admin = false) {
 try {
   let server = await start(8791, { CREATE_LIMIT_PER_IP: '100', CREATE_LIMIT_GLOBAL: '200' });
   const base = server.base;
+  equal((await request(base, '/api/rules')).data.rulesets[0].id, 'hidden-crown');
+  equal((await request(base, '/api/rooms', 'POST', { ruleset: { id: 'hidden-crown', version: 999 } })).data.code, 'unsupported_ruleset');
+  equal((await request(base, '/api/rooms', 'POST', { ruleset: { id: 'hidden-crown', version: 1, options: { invalid: true } } })).status, 400);
   equal((await request(base, '/api/admin/rooms')).status, 401);
   equal((await request(base, '/api/admin/session')).status, 401);
   equal((await request(base, '/api/admin/login', 'POST', { username: 'wrong', password })).status, 401);
@@ -62,6 +74,14 @@ try {
   const cookie = login.headers.get('set-cookie').split(';')[0], csrf = login.data.csrf;
   check(login.headers.get('set-cookie').includes('HttpOnly')); check(login.headers.get('set-cookie').includes('SameSite=Strict'));
   const auth = { Cookie: cookie }, mutate = { ...auth, Origin: base, 'X-CSRF-Token': csrf };
+  equal((await request(base, '/api/admin/metrics')).status, 401);
+  equal((await request(base, '/api/admin/metrics', 'GET', undefined, auth)).data.database, postgresAdmin ? 'postgres' : 'sqlite');
+  if (postgresAdmin) {
+    const duplicate = spawn(process.execPath, ['dist/server.mjs'], { env: { ...process.env, PORT: '8805', PUBLIC_ORIGIN: 'http://127.0.0.1:8805', DATABASE_URL: server.databaseUrl, ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.push(duplicate); let diagnostic = ''; duplicate.stderr.on('data', data => diagnostic += data);
+    await new Promise(resolve => duplicate.once('exit', resolve));
+    equal(duplicate.exitCode, 1); check(diagnostic.includes('already owned')); check(!diagnostic.includes(password));
+  }
   equal((await request(base, '/api/admin/settings')).status, 401);
   equal((await request(base, '/api/admin/settings', 'GET', undefined, auth)).data.waitingMinutes, 15);
   equal((await request(base, '/api/admin/settings', 'PUT', { waitingMinutes: 30 }, auth)).status, 403);
@@ -73,9 +93,16 @@ try {
   equal((await request(base, `/api/admin/rooms/${room.roomId}/links`, 'GET', undefined, auth)).data, room.links);
   equal(Object.keys(room.links).sort(), ['black', 'white']);
   // Even a leaked legacy observer token must not grant the public god view.
-  const fixtureDb = new DatabaseSync(server.database);
-  const legacyToken = JSON.parse(fixtureDb.prepare('SELECT state FROM rooms WHERE id=?').get(room.roomId).state).tokens.observer;
-  fixtureDb.close();
+  let legacyToken;
+  if (postgresAdmin) {
+    const fixtureDb = new pg.Client({ connectionString: server.databaseUrl }); await fixtureDb.connect();
+    try { legacyToken = JSON.parse((await fixtureDb.query('SELECT state FROM hc_rooms WHERE id=$1', [room.roomId])).rows[0].state).tokens.observer; }
+    finally { await fixtureDb.end(); }
+  } else {
+    const fixtureDb = new DatabaseSync(server.database);
+    legacyToken = JSON.parse(fixtureDb.prepare('SELECT state FROM hc_rooms WHERE id=?').get(room.roomId).state).tokens.observer;
+    fixtureDb.close();
+  }
   const publicObserver = new WebSocket(`${base.replace(/^http/, 'ws')}/ws/${room.roomId}`);
   sockets.push(publicObserver);
   const legacyClosed = new Promise(resolve => publicObserver.once('close', resolve));
@@ -110,9 +137,15 @@ try {
   const expiredCrownWhite = await connect(base, staleCrowns, 'white'), expiredCrownBlack = await connect(base, staleCrowns, 'black');
   const preserved = (await request(base, '/api/rooms', 'POST')).data;
   await request(base, `/api/admin/rooms/${preserved.roomId}/end`, 'POST', undefined, mutate);
-  const ageDb = new DatabaseSync(server.database), oldAt = Date.now() - 16 * 60000;
-  for (const id of [staleLobby.roomId, staleCrowns.roomId, room.roomId, preserved.roomId]) ageDb.prepare('UPDATE rooms SET created_at=? WHERE id=?').run(oldAt, id);
-  ageDb.close();
+  const oldAt = Date.now() - 16 * 60000;
+  if (postgresAdmin) {
+    const ageDb = new pg.Client({ connectionString: server.databaseUrl }); await ageDb.connect();
+    try { for (const id of [staleLobby.roomId, staleCrowns.roomId, room.roomId, preserved.roomId]) await ageDb.query('UPDATE hc_rooms SET created_at=$1 WHERE id=$2', [oldAt, id]); } finally { await ageDb.end(); }
+  } else {
+    const ageDb = new DatabaseSync(server.database);
+    for (const id of [staleLobby.roomId, staleCrowns.roomId, room.roomId, preserved.roomId]) ageDb.prepare('UPDATE hc_rooms SET created_at=? WHERE id=?').run(oldAt, id);
+    ageDb.close();
+  }
   expiredCrownWhite.ws.send(JSON.stringify({ type: 'select_crown', pieceId: 'wK' }));
   expiredCrownBlack.ws.send(JSON.stringify({ type: 'select_crown', pieceId: 'bK' }));
   // The periodic sweep must run even without an HTTP request or cached-room load.
@@ -171,6 +204,22 @@ try {
   for (let i = 0; i < 40; i++) if (cwhite.ws.readyState === WebSocket.OPEN) cwhite.ws.send(JSON.stringify({ type: 'ping' }));
   await new Promise(resolve => setTimeout(resolve, 100)); equal(cwhite.closed, 1008);
   equal((await request(capped.base, '/healthz')).status, 200);
+  const many = await start(8803, { CREATE_LIMIT_PER_IP: '100', CREATE_LIMIT_GLOBAL: '100', MAX_LOADED_ROOMS: '80', TRUSTED_PROXIES: '127.0.0.1' });
+  for (let index = 0; index < 70; index++) {
+    const created = await request(many.base, '/api/rooms', 'POST'); equal(created.status, 201);
+    await connect(many.base, created.data, 'white', undefined, { 'X-Forwarded-For': `198.18.0.${index + 1}` });
+  }
+  equal((await request(many.base, '/healthz')).status, 200);
+  const manyLogin = await request(many.base, '/api/admin/login', 'POST', { username, password });
+  const manyMetrics = await request(many.base, '/api/admin/metrics', 'GET', undefined, { Cookie: manyLogin.headers.get('set-cookie').split(';')[0] });
+  equal(manyMetrics.data.loadedRooms, 70); equal(manyMetrics.data.connections, 70);
   await writeFile(new URL('result.json', directory), JSON.stringify({ checks, passed: true, at: new Date().toISOString() }));
   console.log(`PASS: ${checks} self-host assertions: authentication, CSRF, admin live views/moderation, persistence, creation/login/message/connection limits and proxy spoof rejection.`);
-} finally { for (const ws of sockets) ws.close(); for (const child of children) if (child.exitCode === null) child.kill('SIGTERM'); }
+} finally {
+  for (const ws of sockets) ws.close();
+  for (const child of children) await stop(child);
+  if (postgresAdmin) {
+    const admin = new pg.Client({ connectionString: postgresAdmin }); await admin.connect();
+    try { for (const name of createdDatabases) await admin.query(`DROP DATABASE ${name}`); } finally { await admin.end(); }
+  }
+}

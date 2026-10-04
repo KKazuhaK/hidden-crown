@@ -1,4 +1,5 @@
-import { applyMove, initialPosition, opposite, pseudoLegalMoves } from "./engine";
+import { ruleRegistry } from './rules/registry';
+import type { RoomPersistence } from './persistence';
 import { linksFor, parseMessage, viewFor } from "./protocol";
 import type { ServerMessage } from "./protocol";
 import type { GameState, LogEvent, Role, View } from "./types";
@@ -12,23 +13,23 @@ export interface RoomSocket {
   close(code?: number, reason?: string): void;
 }
 export interface RoomContext {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    transaction<T>(callback: (txn: { put(values: Record<string, unknown>): Promise<void> }) => Promise<T>): Promise<T>;
-    setAlarm(at: number): Promise<void>;
-  };
+  persistence: RoomPersistence;
+  setAlarm(at: number): Promise<void>;
   getWebSockets(): RoomSocket[];
   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
 }
 export class RoomCore {
+  readonly ready: Promise<void>;
   private state: GameState | undefined;
   private log: LogEvent[] = [];
 
   constructor(private ctx: RoomContext, private allowObserverToken = false) {
-    ctx.blockConcurrencyWhile(async () => {
-      this.state = await ctx.storage.get<GameState>("state");
+    this.ready = ctx.blockConcurrencyWhile(async () => {
+      const saved = await ctx.persistence.load();
+      this.state = saved?.state;
       if (this.state && !this.state.claimed) this.state.claimed = { ...this.state.joined };
-      this.log = await ctx.storage.get<LogEvent[]>("log") ?? [];
+      this.log = saved?.events ?? [];
+      if (this.state) ruleRegistry.resolve(this.state.ruleset);
     });
   }
 
@@ -37,10 +38,12 @@ export class RoomCore {
     if (path === "/init" && request.method === "POST") {
       return this.ctx.blockConcurrencyWhile(async () => {
         if (this.state) return new Response("Room exists", { status: 409 });
-        const { roomId, tokens } = await request.json() as { roomId: string; tokens: GameState["tokens"] };
+        const { roomId, tokens, ruleset: input } = await request.json() as { roomId: string; tokens: GameState["tokens"]; ruleset?: unknown };
         const now = Date.now();
+        const ruleset = ruleRegistry.selection(input), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
         const state: GameState = {
-          ...initialPosition(), roomId, tokens, createdAt: now, phase: "lobby", moves: [], drawOffer: null,
+          ...position, revision: 0, ruleset, initialPosition: structuredClone({ pieces: position.pieces, board: position.board, turn: position.turn }),
+          roomId, tokens, createdAt: now, phase: "lobby", moves: [], drawOffer: null,
           joined: { w: false, b: false }, claimed: { w: false, b: false }, playStartedAt: null, lastMoveAt: null, result: null, crowns: { w: null, b: null }
         };
         await this.commit(state, [{ t: now, actor: "system", type: "room_created" }]);
@@ -72,7 +75,7 @@ export class RoomCore {
   async accept(ws: RoomSocket, admin = false) {
     ws.serializeAttachment({ active: true, openedAt: Date.now(), ...(admin ? { role: "observer", admin: true } : {}) });
     if (admin) { this.send(ws, { type: "welcome", role: "observer" }); this.broadcast(); }
-    else await this.ctx.storage.setAlarm(Math.min(...this.ctx.getWebSockets().filter(socket => !this.attachment(socket).role).map(socket => this.attachment(socket).openedAt + 15000), Date.now() + 15000));
+    else await this.ctx.setAlarm(Math.min(...this.ctx.getWebSockets().filter(socket => !this.attachment(socket).role).map(socket => this.attachment(socket).openedAt + 15000), Date.now() + 15000));
   }
   pendingCount() { return this.ctx.getWebSockets().filter(ws => !this.attachment(ws).role).length; }
   async adminEnd() {
@@ -113,9 +116,10 @@ export class RoomCore {
     }
   }
   private async commit(state: GameState, events: LogEvent[]) {
-    const log = [...this.log, ...events];
-    await this.ctx.storage.transaction(async txn => { await txn.put({ state, log }); });
-    this.state = state; this.log = log;
+    const expectedRevision = this.state?.revision ?? 0;
+    const next = { ...state, revision: expectedRevision + 1 };
+    await this.ctx.persistence.commit(next, events, expectedRevision);
+    this.state = next; this.log.push(...events);
   }
 
   async webSocketMessage(ws: RoomSocket, raw: string | ArrayBuffer) {
@@ -130,18 +134,21 @@ export class RoomCore {
         const role = (["w", "b", ...(this.allowObserverToken ? ["observer"] : [])] as Role[]).find(role => state.tokens[role] === m.token);
         if (!role) { this.error(ws, "bad_token"); ws.close(4001, "bad_token"); return; }
         const joinEvents: LogEvent[] = [];
+        const replaced: { socket: RoomSocket; attachment: Attachment }[] = [];
         for (const old of this.ctx.getWebSockets()) {
           const oldA = this.attachment(old);
           if (old !== ws && oldA.active && oldA.role === role && !oldA.admin) {
             joinEvents.push({ t: Date.now(), actor: role, type: "left", data: { code: 4000, replaced: true } });
-            old.serializeAttachment({ ...oldA, active: false }); old.close(4000, "replaced");
+            replaced.push({ socket: old, attachment: oldA });
           }
         }
-        ws.serializeAttachment({ ...a, role });
         const next = structuredClone(state);
         if (role !== "observer") { next.joined[role] = true; next.claimed[role] = true; }
-        if (next.phase === "lobby" && next.joined.w && next.joined.b) next.phase = "crown_select";
+        ruleRegistry.resolve(next.ruleset).onPlayersJoined(next, Date.now());
+        if (state.phase !== 'playing' && next.phase === 'playing') joinEvents.push({ t: Date.now(), actor: 'system', type: 'play_started' });
         await this.commit(next, [...joinEvents, { t: Date.now(), actor: role, type: "joined" }]);
+        for (const old of replaced) { old.socket.serializeAttachment({ ...old.attachment, active: false }); old.socket.close(4000, 'replaced'); }
+        ws.serializeAttachment({ ...a, role });
         this.send(ws, { type: "welcome", role }); this.broadcast(); return;
       }
       const role = a.role;
@@ -154,43 +161,9 @@ export class RoomCore {
         return;
       }
       if (role === "observer") { this.error(ws, "player_only"); return; }
-      const now = Date.now(), events: LogEvent[] = [];
-      let next = structuredClone(state);
-      const event = (type: LogEvent["type"], data?: Record<string, unknown>) => events.push({ t: now, actor: role, type, ...(data ? { data } : {}) });
-      if (m.type === "select_crown") {
-        if (state.phase !== "crown_select") { this.error(ws, "wrong_phase"); return; }
-        const piece = state.pieces[m.pieceId];
-        if (state.crowns[role] || !piece || piece.color !== role || piece.type === "P" || piece.promoted || piece.square === null) { this.error(ws, "invalid_crown"); return; }
-        next.crowns[role] = piece.id; event("crown_locked", { pieceId: piece.id });
-        if (next.crowns.w && next.crowns.b) {
-          next.phase = "playing"; next.playStartedAt = now;
-          events.push({ t: now, actor: "system", type: "play_started" });
-        }
-      } else {
-        if (state.phase !== "playing") { this.error(ws, "wrong_phase"); return; }
-        switch (m.type) {
-          case "move": {
-            if (role !== state.turn) { this.error(ws, "not_your_turn"); return; }
-            const move = pseudoLegalMoves(state, state.turn).find(candidate => candidate.from === m.from && candidate.to === m.to && candidate.promotion === m.promotion);
-            if (!move) { this.error(ws, "illegal_move"); return; }
-            const applied = applyMove(state, move, now); next = applied.state;
-            event("move", { ...applied.record }); break;
-          }
-          case "offer_draw":
-            if (state.drawOffer) { this.error(ws, "draw_already_open"); return; }
-            next.drawOffer = role; event("draw_offered"); break;
-          case "respond_draw":
-            if (!state.drawOffer || state.drawOffer === role) { this.error(ws, "no_opponent_offer"); return; }
-            next.drawOffer = null; event(m.accept ? "draw_accepted" : "draw_declined");
-            if (m.accept) next.result = { winner: null, reason: "agreement" }; break;
-          case "resign": next.result = { winner: opposite(role), reason: "resign" }; event("resign"); break;
-        }
-      }
-      if (next.result) {
-        next.phase = "ended"; next.drawOffer = null;
-        events.push({ t: now, actor: "system", type: "game_ended", data: { ...next.result } });
-      }
-      await this.commit(next, events); this.broadcast();
+      const transition = ruleRegistry.resolve(state.ruleset).applyCommand(state, role, m, Date.now());
+      if ('error' in transition) { this.error(ws, transition.error); return; }
+      await this.commit(transition.state, transition.events); this.broadcast();
     });
   }
 
@@ -215,6 +188,6 @@ export class RoomCore {
         else pending = true;
       }
     }
-    if (pending) await this.ctx.storage.setAlarm(Date.now() + 15000);
+    if (pending) await this.ctx.setAlarm(Date.now() + 15000);
   }
 }

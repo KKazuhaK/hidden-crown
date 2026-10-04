@@ -6,6 +6,8 @@ import type { Color, GameState, Move, MoveRecord, PieceType } from "../src/types
 const sq = (name: string) => "abcdefgh".indexOf(name[0]) + (Number(name[1]) - 1) * 8;
 export function setup(placements?: Record<string, string>, turn: Color = "w"): GameState {
   const state: GameState = {
+    revision: 0, ruleset: { id: 'hidden-crown', version: 1, options: { castling: true, enPassant: true, drawPlyLimit: 100 } },
+    initialPosition: initialPosition(), ruleState: {},
     ...initialPosition(), roomId: "TESTROOM", createdAt: 0, phase: "playing", moves: [], drawOffer: null,
     joined: { w: true, b: true }, claimed: { w: true, b: true }, playStartedAt: 1000, lastMoveAt: null, result: null,
     crowns: { w: null, b: null }, tokens: { w: "white-secret", b: "black-secret", observer: "observer-secret" }, turn

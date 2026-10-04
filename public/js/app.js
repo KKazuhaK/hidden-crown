@@ -61,14 +61,15 @@ async function copy(text, success = 'copied') {
 }
 const absolute = relative => new URL(relative, location.origin).href;
 function send(message) {
-  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw'].includes(message.type)) return false;
+  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw', 'rule_action'].includes(message.type)) return false;
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
 function rules() {
   const details = node('details', 'panel'); details.open = rulesOpen;
   details.append(node('summary', '', t('rules')));
-  const list = node('ol'); for (let i = 1; i <= 5; i++) list.append(node('li', '', t(`rule${i}`)));
+  const options = view?.ruleset?.options ?? { castling: true, enPassant: true, drawPlyLimit: 100 };
+  const list = node('ol'); for (let i = 1; i <= 5; i++) list.append(node('li', '', i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : t(`rule${i}`, { plies: options.drawPlyLimit })));
   details.append(list); details.addEventListener('toggle', () => { rulesOpen = details.open; }); return details;
 }
 function linkRows(links) {
@@ -214,7 +215,7 @@ function resultPanel() {
     const loser = result.winner === 'w' ? 'b' : 'w';
     explanation = t('crown_captured', { color: colorName(loser), piece: pieceName(view.pieces[view.crowns[loser]]) });
   } else if (result.reason === 'resign') explanation = t('resignReason', { color: colorName(result.winner === 'w' ? 'b' : 'w') });
-  else explanation = t(result.reason);
+  else explanation = t(result.reason, { plies: view.ruleset?.options.drawPlyLimit ?? 100 });
   panel.append(node('p', '', explanation), node('h3', '', t('reveal')));
   for (const id of Object.values(view.crowns ?? {}).filter(Boolean)) {
     const piece = view.pieces[id]; const capture = view.moves.find(m => m.captured === id);
