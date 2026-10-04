@@ -1,0 +1,5 @@
+services:
+  hidden-crown:
+    build: .
+    image: hidden-crown:local
+    pull_policy: never

@@ -1,0 +1,9 @@
+node_modules
+.git
+.wrangler
+dist
+test-artifacts
+data
+secrets
+.env
+.env.*

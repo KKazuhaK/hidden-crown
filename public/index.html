@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="referrer" content="no-referrer">
+    <title>Hidden Crown</title>
+    <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Hidden Crown"><span class="brand-mark" aria-hidden="true">♔︎</span> Hidden Crown</a>
+      <button id="language" class="quiet-button" type="button">中文</button>
+    </header>
+    <main id="app"></main>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <dialog id="promotion" aria-labelledby="promotion-title"><h2 id="promotion-title"></h2><div id="promotion-choices" class="promotion-choices"></div><button id="promotion-cancel" class="quiet-button"></button></dialog>
+    <dialog id="confirmation" aria-labelledby="confirmation-title" aria-describedby="confirmation-message"><h2 id="confirmation-title"></h2><p id="confirmation-message"></p><div class="actions"><button id="confirmation-accept" class="primary"></button><button id="confirmation-cancel" class="quiet-button"></button></div></dialog>
+    <dialog id="side-picker" aria-labelledby="side-title" aria-describedby="side-help">
+      <h2 id="side-title"></h2><p id="side-help"></p>
+      <div class="actions"><button id="side-white" type="button" class="primary"></button><button id="side-black" type="button" class="primary"></button><button id="side-cancel" type="button"></button></div>
+    </dialog>
+  </body>
+</html>

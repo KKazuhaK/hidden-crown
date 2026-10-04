@@ -1,0 +1,55 @@
+import { pseudoLegalMoves } from "./engine";
+import type { GameState, Links, LogEvent, Promotion, Role, View } from "./types";
+
+export type ClientMessage =
+  | { type: "hello"; token: string }
+  | { type: "select_crown"; pieceId: string }
+  | { type: "move"; from: number; to: number; promotion?: Promotion }
+  | { type: "respond_draw"; accept: boolean }
+  | { type: "offer_draw" | "resign" | "get_log" | "get_links" | "ping" };
+export type ServerMessage =
+  | { type: "welcome"; role: Role }
+  | { type: "state"; view: View }
+  | { type: "log"; events: LogEvent[]; moves: GameState["moves"]; crowns: GameState["crowns"] }
+  | { type: "links"; links: Links }
+  | { type: "error"; code: string; message: string }
+  | { type: "pong" };
+
+export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
+  if (typeof raw !== "string" || raw.length > 4096) return null;
+  try {
+    const m = JSON.parse(raw);
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    let allowed: string[];
+    switch (m.type) {
+      case "hello": if (typeof m.token !== "string" || m.token.length > 128) return null; allowed = ["token"]; break;
+      case "select_crown": if (typeof m.pieceId !== "string" || m.pieceId.length > 16) return null; allowed = ["pieceId"]; break;
+      case "move":
+        if (![m.from, m.to].every(s => Number.isInteger(s) && s >= 0 && s < 64) || (m.promotion !== undefined && !["Q", "R", "B", "N"].includes(m.promotion))) return null;
+        allowed = ["from", "to", "promotion"]; break;
+      case "respond_draw": if (typeof m.accept !== "boolean") return null; allowed = ["accept"]; break;
+      case "offer_draw": case "resign": case "get_log": case "get_links": case "ping": allowed = []; break;
+      default: return null;
+    }
+    if (Object.keys(m).some(key => key !== "type" && !allowed.includes(key))) return null;
+    return m as ClientMessage;
+  } catch { return null; }
+}
+
+export function viewFor(state: GameState, role: Role, connected: View["connected"], now = Date.now()): View {
+  // Explicit allowlist: adding server-only state fields cannot accidentally disclose them.
+  const view: View = {
+    role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn, moves: state.moves,
+    connected, playStartedAt: state.playStartedAt, lastMoveAt: state.lastMoveAt, serverNow: now,
+    crownLocked: { w: !!state.crowns.w, b: !!state.crowns.b }, drawOffer: state.drawOffer, result: state.result
+  };
+  if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
+  if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
+  if (role === state.turn && state.phase === "playing") view.legalMoves = pseudoLegalMoves(state, state.turn);
+  return view;
+}
+
+export function linksFor(state: GameState): Links {
+  const link = (role: Role) => `/?room=${encodeURIComponent(state.roomId)}#t=${encodeURIComponent(state.tokens[role])}`;
+  return { white: link("w"), black: link("b"), observer: link("observer") };
+}

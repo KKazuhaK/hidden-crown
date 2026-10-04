@@ -1,0 +1,32 @@
+{
+  "name": "hidden-crown",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run build && npm start",
+    "dev:cloudflare": "wrangler dev",
+    "build": "node scripts/build-server.mjs",
+    "start": "node dist/server.mjs",
+    "deploy": "wrangler deploy",
+    "test": "vitest run test/engine.test.ts test/board-motion.test.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test:selfhost": "node scripts/selfhost-smoke.mjs",
+    "test:room": "node scripts/room-smoke.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

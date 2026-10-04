@@ -1,0 +1,70 @@
+name: Test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm test && npm run build && npm run test:selfhost
+      - name: Container runtime and persistent volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -t hidden-crown:test .
+          secret="$RUNNER_TEMP/hc-admin-password.txt"
+          printf '%s' 'isolated-container-test-password' > "$secret"
+          sudo chown 1000:1000 "$secret"
+          sudo chmod 600 "$secret"
+          docker run -d --name hc-test --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges -p 127.0.0.1:8794:8787 \
+            -e PUBLIC_ORIGIN=http://127.0.0.1:8794 -e ADMIN_USERNAME=admin \
+            -e CREATE_LIMIT_PER_IP=50 -e CREATE_LIMIT_GLOBAL=200 \
+            -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+            --mount "type=bind,src=$secret,dst=/run/secrets/admin_password,readonly" \
+            -v hc-test-data:/app/data hidden-crown:test
+          trap 'docker logs hc-test; docker rm -f hc-test; docker volume rm hc-test-data' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8794/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8794/healthz
+          export HIDDEN_CROWN_URL=http://127.0.0.1:8794
+          export HIDDEN_CROWN_ADMIN_PASSWORD=isolated-container-test-password
+          node scripts/room-smoke.mjs
+          node scripts/join-smoke.mjs
+          node scripts/persistence-smoke.mjs prepare
+          docker restart hc-test
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8794/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8794/healthz
+          node scripts/persistence-smoke.mjs verify
+      - name: Nginx configuration syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hc-cert"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=chess.example.com' \
+            -keyout "$RUNNER_TEMP/hc-cert/privkey.pem" -out "$RUNNER_TEMP/hc-cert/fullchain.pem"
+          docker run --rm \
+            -v "$PWD/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/deploy/hidden-crown-proxy.conf:/etc/nginx/snippets/hidden-crown-proxy.conf:ro" \
+            -v "$RUNNER_TEMP/hc-cert:/etc/letsencrypt/live/chess.example.com:ro" \
+            nginx:stable-alpine nginx -t
