@@ -179,7 +179,7 @@ const assets = new Map<string, { content: Buffer; type: string }>();
 for (const [route, file, type] of [
   ['/', 'index.html', 'text/html'], ['/styles.css', 'styles.css', 'text/css'],
   ['/js/app.js', 'js/app.js', 'text/javascript'], ['/js/board.js', 'js/board.js', 'text/javascript'], ['/js/i18n.js', 'js/i18n.js', 'text/javascript'],
-  ['/admin', 'admin.html', 'text/html'], ['/js/admin.js', 'js/admin.js', 'text/javascript'], ['/js/icons.js', 'js/icons.js', 'text/javascript'],
+  ['/js/admin-i18n.js', 'js/admin-i18n.js', 'text/javascript'], ['/admin', 'admin.html', 'text/html'], ['/js/admin.js', 'js/admin.js', 'text/javascript'], ['/js/icons.js', 'js/icons.js', 'text/javascript'],
   ['/js/pieces.js', 'js/pieces.js', 'text/javascript'], ['/js/board-motion.js', 'js/board-motion.js', 'text/javascript'], ['/js/replay.js', 'js/replay.js', 'text/javascript']
 ]) assets.set(route, { content: readFileSync(fileURLToPath(new URL(`../public/${file}`, import.meta.url))), type });
 const server = createServer(async (req, res) => {

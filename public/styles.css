@@ -19,6 +19,7 @@ button:disabled { opacity:.45; cursor:default; }
 .admin-settings form { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .admin-settings input { width:90px; font:inherit; padding:8px; border:1px solid var(--line); border-radius:7px; color:var(--text); background:var(--bg); }
 .is-refreshing .button-icon { animation:refresh-spin 1s linear infinite; }
+.admin-refresh { width:160px; flex-shrink:0; justify-content:flex-start; white-space:nowrap; }
 @keyframes refresh-spin { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .is-refreshing .button-icon { animation:none; } }
 button:focus-visible,a:focus-visible,input:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
@@ -41,9 +42,11 @@ h3 { font-size:14px; font-weight:600; }
 .eyebrow { text-transform:uppercase; font-size:11px; letter-spacing:2px; font-weight:650; color:var(--muted); }
 .home { max-width:800px; margin:24px auto; }
 .hero { text-align:center; padding:12px 10px 28px; }
-.hero-icon { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:64px; line-height:1.3; }
-.hero h1 { font-size:46px; margin:16px auto; max-width:700px; }
-.hero .description { font-size:18px; max-width:520px; margin:20px auto 28px; color:var(--muted); }
+.hero-icon { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:52px; line-height:1.3; }
+.hero h1 { font-family:inherit; font-size:clamp(28px,3.5vw,40px); font-weight:550; line-height:1.35; letter-spacing:-.5px; margin:16px auto; max-width:720px; text-wrap:balance; }
+.hero-title-line { display:block; }
+:lang(zh) .hero h1 { letter-spacing:0; }
+.hero .description { font-size:16px; max-width:480px; margin:18px auto 24px; color:var(--muted); }
 .features { display:flex; justify-content:center; flex-wrap:wrap; gap:26px; font-size:13px; color:var(--muted); margin-top:26px; }
 .features span::before { content:'·'; color:var(--gold); padding-right:8px; }
 .panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:22px; }
@@ -154,6 +157,6 @@ dialog > .actions { justify-content:flex-end; margin-top:18px; }
 .promotion-choices .piece { width:100%; height:100%; }
 @media(prefers-color-scheme:dark) { :root { --bg:#181e1b; --surface:#202823; --text:#e8ebe4; --muted:#a3b1a7; --line:#35423a; --accent:#9fbc9f; --accent-text:#18251b; --light:#b5c1a8; --dark:#637d68; --gold:#d4ac4b; --danger:#efa99a; --warning-bg:#392723; } }
 @media(max-width:850px) { .game-layout { grid-template-columns:minmax(0,560px); justify-content:center; } .game-heading { max-width:560px; margin-left:auto; margin-right:auto; } .sidebar { width:100%; } .move-scroll { max-height:260px; } }
-@media(max-width:480px) { .site-header { padding:17px 16px; } main { padding:22px 4vw; } .hero { padding-top:0; } .hero h1 { font-size:32px; } .home { margin:18px auto; } .hero .description { font-size:16px; } .panel { padding:16px; } .game-heading h1 { font-size:28px; } .presence { gap:10px; } .crown-badge { width:16px; height:16px; font-size:12px; line-height:15px; top:2px; right:2px; } .features { gap:12px; } .file-label,.rank-label { font-size:9px; } }
+@media(max-width:480px) { .site-header { padding:17px 16px; } main { padding:22px 4vw; } .hero { padding-top:0; } .hero h1 { font-size:28px; } .home { margin:18px auto; } .hero .description { font-size:16px; } .panel { padding:16px; } .game-heading h1 { font-size:28px; } .presence { gap:10px; } .crown-badge { width:16px; height:16px; font-size:12px; line-height:15px; top:2px; right:2px; } .features { gap:12px; } .file-label,.rank-label { font-size:9px; } }
 
 @media(max-width:480px) { .site-header { padding:16px 12px; gap:8px; } .brand { font-size:16px; gap:6px; } .brand-mark { font-size:24px; } .header-actions { gap:6px; } .header-actions button { padding:8px; font-size:12px; } .header-actions .button-with-icon { gap:5px; } .header-actions .button-icon { width:16px; height:16px; flex-basis:16px; } .hero .join-panel h2 { font-size:20px; } .hero .join-form { flex-direction:column; } .hero .join-form button { width:100%; padding:12px; } }

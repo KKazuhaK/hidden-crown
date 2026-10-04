@@ -64,3 +64,13 @@ Administrator authorization follow-up: 82 self-hosted assertions passed. An isol
 - [v1.0.0](https://github.com/KKazuhaK/hidden-crown/releases/tag/v1.0.0) publishes `ghcr.io/kkazuhak/hidden-crown:1.0.0`, `latest` and `beta`, plus the configuration-only `hidden-crown-compose.zip`. The ZIP was downloaded from the actual release and inspected: version 1.0.0 selected, administrator password blank, optional secrets configuration and Nginx files included.
 - The user authorized public image access. GitHub's package settings confirm Public while the source repository remains private. All three registry manifests were read with an anonymous registry bearer token, without GitHub credentials; they contain Linux AMD64/ARM64 and their attestations. Manifest digest: `sha256:e09b5902cf9e09f198f89ee835ef7dc9bce3a8e55d2a9d7afcf265894912b71a`.
 - Screenshot: ignored `test-artifacts/public-container-package.png`. No deployment on the user's production server has been performed.
+
+
+## Public homepage and bilingual admin update (v1.0.2)
+
+- Homepage prioritizes room-number joining; creation is a secondary header action and hidden during a game. Tested header creation, invalid-code feedback and joining with side selection in the browser.
+- Headline uses smaller system typography with two sentence-level lines in English and Chinese. Verified mobile homepage and admin at 390px without document overflow. Earlier join-first layout was also verified at 320px.
+- Removed tester/researcher copy and the public admin-view prompt from invitations. Browser creation exposes exactly two player links and no tester caption.
+- Administrator UI shares the existing saved language preference and defaults to English without a preference. Verified English login, Chinese/English lists, settings-save success, player-link modal and delete confirmation without submitting deletion. All 69 admin translation keys match across languages.
+- Refresh uses a single circular-arrow icon and a fixed 160px button width. Verified the glyph and width in the browser and a successful manual refresh.
+- Type checks, JavaScript syntax checks and 82 self-host assertions passed locally. The new admin translation module is served successfully by the self-hosted asset allowlist.

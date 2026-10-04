@@ -80,7 +80,7 @@ function linkRows(links) {
   }
   for (const role of ['white', 'black']) {
     const row = node('div', 'invite-row');
-    const label = node('div'); label.append(node('strong', '', t(role)), node('div', 'small', t(role === 'observer' ? 'keep' : 'tester')));
+    const label = node('div'); label.append(node('strong', '', t(role)));
     const input = node('input'); input.readOnly = true; input.value = absolute(links[role]); input.setAttribute('aria-label', t(role));
     input.addEventListener('focus', () => input.select());
     const open = node('a', 'open-link', t('open')); open.href = input.value; open.target = '_blank'; open.rel = 'noopener noreferrer';
@@ -136,9 +136,14 @@ async function joinRoom(color) {
     location.assign(target.href);
   } catch { joinError = 'error_request'; } finally { joining = false; render(); }
 }
+function homeTitle() {
+  const title = node('h1');
+  title.append(node('span', 'hero-title-line', t('homeTitleLead')), node('span', 'hero-title-line', t('homeTitleSecret')));
+  return title;
+}
 function renderHome() {
   const home = node('div', 'home'), hero = node('section', 'hero');
-  hero.append(node('p', 'eyebrow', t('homeTag')), node('div', 'hero-icon', '♔\uFE0E'), node('h1', '', t('subtitle')), node('p', 'description', t('description')));
+  hero.append(node('p', 'eyebrow', t('homeTag')), node('div', 'hero-icon', '♔\uFE0E'), homeTitle(), node('p', 'description', t('description')));
   hero.append(joinPanel());
   const features = node('div', 'features'); for (const key of ['featureSecret', 'featureRemote', 'featureTime']) features.append(node('span', '', t(key)));
   hero.append(features); home.append(hero);
