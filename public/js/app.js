@@ -2,7 +2,8 @@ import { t, language, toggleLanguage, colorName, pieceName } from './i18n.js';
 import { renderBoard, squareName, crownBadge } from './board.js';
 import { withIcon } from './icons.js';
 import { pieceGraphic } from './pieces.js';
-import { animateBoard } from './board-motion.js';
+import { animateBoard, resetBoardMotion } from './board-motion.js';
+import { replayAt } from './replay.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const roomId = new URLSearchParams(location.search).get('room');
@@ -17,6 +18,9 @@ let createdRoomId = null, joinCode = '', joining = false, joinError = null;
 let clockAnchor = { serverNow: 0, receivedAt: 0 }, promotionMoves = null;
 let rulesOpen = true, noticeKey = null, lastPong = 0;
 let confirmationKey = null, confirmationAction = null;
+let replayPly = null;
+let connectAttempt = 0;
+const displayedView = () => replayPly === null ? view : replayAt(view, replayPly);
 
 function node(tag, className, text) {
   const element = document.createElement(tag); if (className) element.className = className;
@@ -55,6 +59,7 @@ async function copy(text, success = 'copied') {
 }
 const absolute = relative => new URL(relative, location.origin).href;
 function send(message) {
+  if (replayPly !== null && ['move', 'select_crown', 'resign', 'offer_draw', 'respond_draw'].includes(message.type)) return false;
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
@@ -155,13 +160,13 @@ function presence() {
   }
   return element;
 }
-function trays() {
+function trays(position = view) {
   const panel = node('section', 'panel'); panel.append(node('h2', '', t('captured')));
-  const crowns = view.crowns ? Object.values(view.crowns).filter(Boolean) : [view.yourCrown].filter(Boolean);
+  const crowns = position.crowns ? Object.values(position.crowns).filter(Boolean) : [position.yourCrown].filter(Boolean);
   for (const color of ['w', 'b']) {
     const tray = node('div', 'tray'); tray.append(node('div', 'tray-label', t(color === 'w' ? 'capturedWhite' : 'capturedBlack')));
     const pieces = node('div', 'tray-pieces');
-    for (const piece of Object.values(view.pieces).filter(p => p.color === color && p.square === null)) {
+    for (const piece of Object.values(position.pieces).filter(p => p.color === color && p.square === null)) {
       const wrap = node('span', 'captured-piece'); wrap.title = pieceName(piece);
       wrap.append(pieceGraphic(piece));
       if (crowns.includes(piece.id)) wrap.append(crownBadge(color)); pieces.append(wrap);
@@ -181,6 +186,9 @@ function moveTable() {
   const body = node('tbody');
   for (const move of view.moves) {
     const row = node('tr'); row.append(node('td', '', String(move.ply)), node('td', '', colorName(move.color)), node('td', 'notation', move.notation));
+    row.dataset.ply = move.ply;
+    row.children[2].replaceChildren(button(move.notation, () => { seekReplay(move.ply); }, 'move-replay-link'));
+    if (move.ply === replayPly) row.classList.add('replay-selected');
     if (view.role === 'observer') row.append(node('td', '', move.captured ?? '—'), node('td', '', t('seconds', { n: (move.thinkMs / 1000).toFixed(1) })));
     body.append(row);
   }
@@ -263,6 +271,44 @@ function statusText() {
   if (pending) return t('movePending');
   return view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : 'opponentThinking');
 }
+function replayLabel() {
+  if (replayPly === null) return t('livePosition');
+  const move = view.moves[replayPly - 1];
+  return t('replayPosition', { n: replayPly, total: view.moves.length }) + (move ? ` · ${move.notation}` : ` · ${t('initialPosition')}`);
+}
+function seekReplay(ply) {
+  replayPly = ply === null ? null : Math.max(0, Math.min(view.moves.length, Number(ply)));
+  selected = null; candidate = null; promotionMoves = null;
+  document.querySelector('#promotion').close(); document.querySelector('#confirmation').close();
+  confirmationAction = null; confirmationKey = null;
+  const position = displayedView(), container = app.querySelector('.game-board');
+  const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' && view.phase === 'playing' && view.turn === view.role;
+  renderBoard(container, position, { selected, candidate, enabled, onSquare }); resetBoardMotion(view);
+  app.querySelector('.replay-label').textContent = replayLabel();
+  app.querySelector('#replay-range').value = replayPly ?? view.moves.length;
+  app.querySelector('.player-controls')?.toggleAttribute('disabled', replayPly !== null);
+  app.querySelector('.capture-trays').replaceChildren(trays(position));
+  for (const row of app.querySelectorAll('[data-ply]')) row.classList.toggle('replay-selected', Number(row.dataset.ply) === replayPly);
+  for (const button of app.querySelectorAll('[data-replay-direction]')) {
+    const step = Number(button.dataset.replayDirection), at = replayPly ?? view.moves.length;
+    button.disabled = step < 0 ? at === 0 : at === view.moves.length;
+  }
+  app.querySelector('.return-live').disabled = replayPly === null;
+}
+function replayControls() {
+  const panel = node('section', 'panel replay-panel'); panel.append(node('h2', '', t('replay')));
+  const label = node('label', 'small replay-label', replayLabel()); label.htmlFor = 'replay-range';
+  const range = node('input'); range.type = 'range'; range.id = 'replay-range'; range.min = '0'; range.max = String(view.moves.length); range.step = '1'; range.value = String(replayPly ?? view.moves.length);
+  range.addEventListener('input', () => seekReplay(Number(range.value)));
+  const controls = node('div', 'actions replay-actions');
+  for (const [step, key, icon] of [[-1, 'previousMove', 'left'], [1, 'nextMove', 'right']]) {
+    const at = replayPly ?? view.moves.length;
+    const control = button(t(key), () => seekReplay((replayPly ?? view.moves.length) + step), '', step < 0 ? at === 0 : at === view.moves.length, icon);
+    control.dataset.replayDirection = step; controls.append(control);
+  }
+  controls.append(button(t('returnLive'), () => seekReplay(null), 'return-live', replayPly === null, 'refresh'));
+  panel.append(label, range, controls); return panel;
+}
 function renderGame() {
   const scrollPosition = app.querySelector('.move-scroll')?.scrollTop;
   const page = node('div');
@@ -273,23 +319,35 @@ function renderGame() {
   title.append(node('div', 'room-label', `${t('room')} ${roomId}`), node('h1', '', statusText()));
   heading.append(title, node('div', 'small', view.role === 'observer' ? t('observer') : t('youAre', { color: colorName(view.role) }))); page.append(heading);
   if (view.phase === 'ended' && view.result) page.append(resultPanel());
-  const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div');
-  const enabled = connection === 'connected' && !pending && !lockPending && view.role !== 'observer' &&
+  const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div', 'game-board');
+  const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' &&
     ((view.phase === 'playing' && view.turn === view.role) || (view.phase === 'crown_select' && !view.crownLocked[view.role]));
-  renderBoard(boardContainer, view, { selected, candidate, enabled, onSquare }); boardColumn.append(boardContainer);
+  renderBoard(boardContainer, displayedView(), { selected, candidate, enabled, onSquare }); boardColumn.append(boardContainer);
   const status = node('div', 'board-status'); status.append(node('span', 'muted', statusText()), presence()); boardColumn.append(status);
+  if (view.moves.length) boardColumn.append(replayControls());
   const sidebar = node('aside', 'sidebar');
   if (view.role === 'observer') sidebar.append(observerPanel());
-  else if (view.phase === 'playing' || view.phase === 'crown_select') sidebar.append(playerControls());
-  sidebar.append(trays(), moveTable(), rules()); layout.append(boardColumn, sidebar); page.append(layout); app.replaceChildren(page);
+  else if (view.phase === 'playing' || view.phase === 'crown_select') {
+    const controls = node('fieldset', 'player-controls'); controls.disabled = replayPly !== null; controls.append(playerControls()); sidebar.append(controls);
+  }
+  const captureTrays = node('div', 'capture-trays'); captureTrays.append(trays(displayedView()));
+  sidebar.append(captureTrays, moveTable(), rules()); layout.append(boardColumn, sidebar); page.append(layout); app.replaceChildren(page);
   const scroll = app.querySelector('.move-scroll'); if (scroll && scrollPosition !== undefined) scroll.scrollTop = scrollPosition;
-  animateBoard(boardContainer.querySelector('.board'), view);
+  if (replayPly === null) animateBoard(boardContainer.querySelector('.board'), view); else resetBoardMotion(view);
   updateTimer();
 }
 function render() {
   renderConfirmation();
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; withIcon(languageButton, language === 'en' ? '中文' : 'EN', 'language');
   document.querySelector('#promotion-title').textContent = t('selectPromotion'); withIcon(document.querySelector('#promotion-cancel'), t('cancel'), 'close');
+  if (adminWatch && ['adminLoginRequired', 'adminSessionExpired'].includes(connection)) {
+    const panel = node('section', 'panel home');
+    panel.append(node('h1', '', t('adminAccessTitle')));
+    const message = node('p', '', t(connection)); message.setAttribute('role', 'alert'); panel.append(message);
+    const login = node('a', 'open-link primary', t('adminLogin'));
+    login.href = `/admin?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+    withIcon(login, t('adminLogin'), 'lock'); panel.append(login); app.replaceChildren(panel); return;
+  }
   if (!roomId) { renderHome(); return; }
   if (!view) {
     const panel = node('section', 'panel home'); panel.append(node('h1', '', 'Hidden Crown'), node('p', '', t(token || adminWatch ? connection : 'missingToken')));
@@ -299,6 +357,7 @@ function render() {
   renderGame();
 }
 function onSquare(square) {
+  if (replayPly !== null) return;
   if (view.phase === 'crown_select') {
     const piece = view.pieces[view.board[square]];
     candidate = piece?.color === view.role && piece.type !== 'P' && !piece.promoted ? piece.id : null; render(); return;
@@ -355,11 +414,32 @@ function downloadLog(message) {
   const a = node('a'); a.href = url; a.download = `hidden-crown-${roomId}.${kind.toLowerCase()}`; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000); render();
 }
-function connect() {
+function requireAdminLogin(expired = false) {
+  connectAttempt++; clearTimeout(reconnectTimer); clearInterval(pingTimer);
+  if (socket) { socket.onclose = null; socket.onmessage = null; socket.close(); socket = null; }
+  view = null; observerLinks = null; exportKind = null; replayPly = null;
+  pending = false; lockPending = false; selected = null; candidate = null;
+  document.querySelector('#promotion').close(); promotionMoves = null;
+  document.querySelector('#confirmation').close(); confirmationAction = null; confirmationKey = null;
+  connection = expired ? 'adminSessionExpired' : 'adminLoginRequired'; render();
+}
+async function connect() {
   if (!token && !adminWatch) return;
+  const attempt = ++connectAttempt;
   clearTimeout(reconnectTimer); clearInterval(pingTimer);
-  if (socket) { socket.onclose = null; socket.close(); }
+  if (socket) { socket.onclose = null; socket.close(); socket = null; }
   connection = view ? 'reconnecting' : 'connecting'; render();
+  if (adminWatch) {
+    try {
+      const response = await fetch('/api/admin/session', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      if (attempt !== connectAttempt) return;
+      if (response.status === 401 || response.status === 403) { requireAdminLogin(!!view); return; }
+      if (!response.ok) throw new Error('session_unavailable');
+    } catch {
+      if (attempt !== connectAttempt) return;
+      connection = 'connectionFailed'; render(); return;
+    }
+  }
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${encodeURIComponent(roomId)}${adminWatch ? '?admin=1' : ''}`); socket = ws;
   const timeout = setTimeout(() => { if (connection !== 'connected' && socket === ws) ws.close(); }, 12000);
   ws.onopen = () => { if (!adminWatch) ws.send(JSON.stringify({ type: 'hello', token })); };
@@ -385,12 +465,24 @@ function connect() {
       pending = false; lockPending = false; exportKind = null; notice(`error_${message.code}`); render();
     }
   };
-  ws.onclose = event => {
+  ws.onclose = async event => {
     if (socket !== ws) return;
     clearTimeout(timeout); clearInterval(pingTimer); pending = false; lockPending = false; exportKind = null;
     selected = null; document.querySelector('#promotion').close(); promotionMoves = null;
     document.querySelector('#confirmation').close(); confirmationKey = null; confirmationAction = null;
-    if (event.code === 4000 || event.code === 4001) { connection = event.code === 4000 ? 'replaced' : 'badToken'; render(); return; }
+    if (adminWatch && ['admin_logged_out', 'admin_expired'].includes(event.reason)) { requireAdminLogin(true); return; }
+    if (event.code === 4000 || event.code === 4001) { connection = event.reason === 'room_expired' ? 'roomExpired' : event.code === 4000 ? 'replaced' : 'badToken'; render(); return; }
+    try {
+      if (adminWatch) {
+        const auth = await fetch('/api/admin/session', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+        if (socket !== ws) return;
+        if (auth.status === 401 || auth.status === 403) { requireAdminLogin(!!view); return; }
+      }
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/status`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      if (socket !== ws) return;
+      if (response.status === 404) { connection = 'roomMissing'; render(); return; }
+    } catch { /* A network outage uses the normal reconnect path. */ }
+    if (socket !== ws) return;
     connection = view ? 'reconnecting' : 'connectionFailed'; render();
     const delay = [1000, 2000, 4000, 8000][attempts++] ?? 10000;
     reconnectTimer = setTimeout(connect, delay);

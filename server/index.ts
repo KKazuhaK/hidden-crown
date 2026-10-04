@@ -7,6 +7,7 @@ import { RoomCore, type RoomContext, type RoomSocket, type Attachment } from '..
 import type { GameState, LogEvent } from '../src/types';
 import { Store } from './storage';
 import { Limiter, clientIp } from './security';
+import { linksFor } from '../src/protocol';
 
 function integer(name: string, fallback: number, minimum = 1) {
   const value = Number(process.env[name] ?? fallback);
@@ -33,6 +34,10 @@ const fingerprint = scryptSync(`${username}\0${password}`, authSalt, 32).toStrin
 if (store.db.prepare("SELECT value FROM metadata WHERE key='auth_fingerprint'").get()?.value !== fingerprint) store.db.exec('DELETE FROM sessions');
 const putMetadata = store.db.prepare('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
 putMetadata.run('auth_salt', authSalt); putMetadata.run('auth_fingerprint', fingerprint);
+const initialWait = integer('WAITING_TIMEOUT_MINUTES', 15);
+if (initialWait > 1440) throw new Error('WAITING_TIMEOUT_MINUTES must be 1 to 1440');
+if (!store.db.prepare("SELECT value FROM metadata WHERE key='waiting_minutes'").get()) putMetadata.run('waiting_minutes', String(initialWait));
+const waitingMinutes = () => Number(store.db.prepare("SELECT value FROM metadata WHERE key='waiting_minutes'").get()!.value);
 const proxies = new Set((process.env.TRUSTED_PROXIES ?? '').split(',').map(value => value.trim()).filter(Boolean));
 for (const peer of proxies) if (!/^[\da-fA-F:.]+$/.test(peer)) throw new Error('TRUSTED_PROXIES requires exact IP addresses');
 const requests = new Limiter(120, 60000), globalRequests = new Limiter(2000, 60000, 1);
@@ -125,6 +130,32 @@ function ensureCacheBudget(id: string, incomingBytes: number) {
     if (total > maxCacheBytes) throw new Error('server_busy');
   }
 }
+async function removeRoom(id: string, expired = false) {
+  const room = runtimeRooms.get(id);
+  const remove = async () => {
+    const row = store.db.prepare('SELECT phase,created_at FROM rooms WHERE id=?').get(id);
+    if (!row || (expired && (!['lobby', 'crown_select'].includes(String(row.phase)) || Number(row.created_at) + waitingMinutes() * 60000 > Date.now()))) return;
+    if (room) room.deleting = true;
+    store.delete(id, expired ? 'room_expired' : 'room_deleted');
+    if (room) {
+      for (const socket of room.sockets) {
+        socket.serializeAttachment({ ...socket.deserializeAttachment()!, active: false });
+        socket.ws.close(4001, expired ? 'room_expired' : 'room_deleted');
+      }
+      clearTimeout(room.alarmTimer); runtimeRooms.delete(id);
+    }
+  };
+  if (room) await room.blockConcurrencyWhile(remove); else await remove();
+}
+let expiryTask: Promise<void> | null = null;
+function expireWaitingRooms() {
+  if (expiryTask) return expiryTask;
+  expiryTask = (async () => {
+    const rows = store.db.prepare("SELECT id FROM rooms WHERE phase IN ('lobby','crown_select') AND created_at<=?").all(Date.now() - waitingMinutes() * 60000);
+    for (const row of rows) await removeRoom(String(row.id), true);
+  })().finally(() => { expiryTask = null; });
+  return expiryTask;
+}
 function json(res: ServerResponse, status: number, data: unknown, extra: Record<string, string> = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra }); res.end(JSON.stringify(data));
 }
@@ -149,7 +180,7 @@ for (const [route, file, type] of [
   ['/', 'index.html', 'text/html'], ['/styles.css', 'styles.css', 'text/css'],
   ['/js/app.js', 'js/app.js', 'text/javascript'], ['/js/board.js', 'js/board.js', 'text/javascript'], ['/js/i18n.js', 'js/i18n.js', 'text/javascript'],
   ['/admin', 'admin.html', 'text/html'], ['/js/admin.js', 'js/admin.js', 'text/javascript'], ['/js/icons.js', 'js/icons.js', 'text/javascript'],
-  ['/js/pieces.js', 'js/pieces.js', 'text/javascript'], ['/js/board-motion.js', 'js/board-motion.js', 'text/javascript']
+  ['/js/pieces.js', 'js/pieces.js', 'text/javascript'], ['/js/board-motion.js', 'js/board-motion.js', 'text/javascript'], ['/js/replay.js', 'js/replay.js', 'text/javascript']
 ]) assets.set(route, { content: readFileSync(fileURLToPath(new URL(`../public/${file}`, import.meta.url))), type });
 const server = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
@@ -181,6 +212,16 @@ const server = createServer(async (req, res) => {
       const auth = session(req); if (!auth) return json(res, 401, { code: 'admin_required' });
       if (req.method !== 'GET' && (req.headers.origin !== origin || req.headers['x-csrf-token'] !== auth.csrf)) return json(res, 403, { code: 'csrf_failed' });
       if (path === '/api/admin/session' && req.method === 'GET') return json(res, 200, { csrf: auth.csrf });
+      if (path === '/api/admin/settings') {
+        if (req.method === 'GET') return json(res, 200, { waitingMinutes: waitingMinutes() });
+        if (req.method === 'PUT') {
+          const value = await body(req, 128);
+          if (Object.keys(value).length !== 1 || !Number.isSafeInteger(value.waitingMinutes) || Number(value.waitingMinutes) < 1 || Number(value.waitingMinutes) > 1440) return json(res, 400, { code: 'bad_request' });
+          putMetadata.run('waiting_minutes', String(value.waitingMinutes)); store.audit('waiting_timeout_changed');
+          await expireWaitingRooms(); return json(res, 200, { waitingMinutes: waitingMinutes() });
+        }
+        return json(res, 405, { code: 'bad_request' }, { Allow: 'GET, PUT' });
+      }
       if (path === '/api/admin/logout' && req.method === 'POST') {
         store.db.prepare('DELETE FROM sessions WHERE hash=?').run(auth.hash); store.audit('logout');
         // Authenticated admin sockets are revoked together with their HTTP session.
@@ -188,11 +229,12 @@ const server = createServer(async (req, res) => {
         return json(res, 200, { ok: true }, { 'Set-Cookie': `hc_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure ? '; Secure' : ''}` });
       }
       if (path === '/api/admin/rooms' && req.method === 'GET') {
+        await expireWaitingRooms();
         const page = Math.max(1, Math.min(100000, Number(url.searchParams.get('page')) || 1));
         const rows = store.db.prepare('SELECT id,created_at,phase,ply FROM rooms ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?').all((Math.floor(page) - 1) * 50);
-        return json(res, 200, { rooms: rows.map(row => ({ ...row, connected: runtimeRooms.get(String(row.id))?.core.adminSnapshot()?.view.connected ?? { w: false, b: false } })), total: store.count(), page: Math.floor(page), pageSize: 50 });
+        return json(res, 200, { rooms: rows.map(row => ({ ...row, waitingExpiresAt: ['lobby', 'crown_select'].includes(String(row.phase)) ? Number(row.created_at) + waitingMinutes() * 60000 : null, connected: runtimeRooms.get(String(row.id))?.core.adminSnapshot()?.view.connected ?? { w: false, b: false } })), total: store.count(), page: Math.floor(page), pageSize: 50 });
       }
-      const adminRoute = /^\/api\/admin\/rooms\/([A-Z2-9]{8})(?:\/(end|log))?$/.exec(path);
+      const adminRoute = /^\/api\/admin\/rooms\/([A-Z2-9]{8})(?:\/(end|log|links))?$/.exec(path);
       if (adminRoute && pattern.test(adminRoute[1])) {
         const id = adminRoute[1]; if (!store.row(id)) return json(res, 404, { code: 'room_not_found' });
         const room = getRoom(id);
@@ -200,12 +242,12 @@ const server = createServer(async (req, res) => {
           await room.core.adminEnd(); store.audit('room_ended', id); return json(res, 200, { ok: true });
         }
         if (req.method === 'DELETE' && !adminRoute[2]) {
-          await room.blockConcurrencyWhile(async () => {
-            room.deleting = true; store.delete(id);
-            for (const socket of room.sockets) { socket.serializeAttachment({ ...socket.deserializeAttachment()!, active: false }); socket.ws.close(4001, 'room_deleted'); }
-            clearTimeout(room.alarmTimer); runtimeRooms.delete(id);
-          });
+          await removeRoom(id);
           return json(res, 200, { ok: true });
+        }
+        if (req.method === 'GET' && adminRoute[2] === 'links') {
+          const state = JSON.parse(String(store.row(id)!.state)) as GameState, links = linksFor(state);
+          return json(res, 200, { white: links.white, black: links.black });
         }
         if (req.method === 'GET' && adminRoute[2] === 'log') {
           return room.blockConcurrencyWhile(async () => {
@@ -220,11 +262,18 @@ const server = createServer(async (req, res) => {
       if (!creates.take(ip) || !globalCreates.take('all')) return json(res, 429, { code: 'rate_limited' }, { 'Retry-After': '600' });
       const value = await body(req, 128); if (Object.keys(value).length) return json(res, 400, { code: 'bad_request' });
       return await serializeAdmission(async () => {
+        await expireWaitingRooms();
         if (store.count() >= maxRooms || store.bytes() >= integer('MAX_DATABASE_BYTES', 256 * 1024 * 1024) * 0.9) return json(res, 503, { code: 'room_limit' });
         let id: string; do { id = [...randomBytes(8)].map(byte => alphabet[byte % 32]).join(''); } while (store.row(id));
         const response = await getRoom(id).core.fetch(new Request('http://room/init', { method: 'POST', body: JSON.stringify({ roomId: id, tokens: { w: randomUUID(), b: randomUUID(), observer: randomUUID() } }) }));
         return json(res, 201, await response.json());
       });
+    }
+    const status = /^\/api\/rooms\/([A-Z2-9]{8})\/status$/.exec(path);
+    if (status && pattern.test(status[1]) && req.method === 'GET') {
+      await expireWaitingRooms();
+      if (!store.row(status[1])) return json(res, 404, { code: 'room_not_found' });
+      return json(res, 200, { exists: true });
     }
     const join = /^\/api\/rooms\/([^/]+)\/join$/.exec(path);
     if (join) {
@@ -232,6 +281,7 @@ const server = createServer(async (req, res) => {
       const id = join[1].toUpperCase(); if (!pattern.test(id)) return json(res, 400, { code: 'invalid_room_number' });
       const value = await body(req, 128);
       if (Object.keys(value).some(key => key !== 'color') || ('color' in value && !['w', 'b'].includes(String(value.color)))) return json(res, 400, { code: 'bad_request' });
+      await expireWaitingRooms();
       if (!store.row(id)) return json(res, 404, { code: 'room_not_found' });
       const response = await getRoom(id).core.fetch(new Request('http://room/join', { method: 'POST', body: JSON.stringify(value) }));
       return json(res, response.status, await response.json());
@@ -260,6 +310,8 @@ server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', origin), match = /^\/ws\/([A-Z2-9]{8})$/.exec(url.pathname);
     if (req.headers.host !== new URL(origin).host || !sameOrigin(req)) return deny(403);
     if (!match || !pattern.test(match[1]) || !store.row(match[1])) return deny(404);
+    const row = store.db.prepare('SELECT phase,created_at FROM rooms WHERE id=?').get(match[1])!;
+    if (['lobby', 'crown_select'].includes(String(row.phase)) && Number(row.created_at) + waitingMinutes() * 60000 <= Date.now()) return deny(410);
     if (!upgrades.take(clientIp(req, proxies)) || wss.clients.size >= maxConnections) return deny(429);
     const isAdmin = url.searchParams.get('admin') === '1', auth = isAdmin ? session(req) : null;
     if (isAdmin && (!auth || req.headers.origin !== origin)) return deny(401);
@@ -279,6 +331,11 @@ server.on('upgrade', (req, socket, head) => {
       }, 30000); heartbeat.unref();
       ws.on('message', (data, binary) => {
         if (!messages.take(wrapped.id)) { ws.close(1008, 'rate_limited'); return; }
+        const state = store.db.prepare('SELECT phase,created_at FROM rooms WHERE id=?').get(room.id);
+        if (!state) { ws.close(4001, 'room_deleted'); return; }
+        if (['lobby', 'crown_select'].includes(String(state.phase)) && Number(state.created_at) + waitingMinutes() * 60000 <= Date.now()) {
+          removeRoom(room.id, true).catch(() => ws.close(1013, 'server_busy')); return;
+        }
         room.core.webSocketMessage(wrapped, binary ? new ArrayBuffer(0) : data.toString()).catch(() => ws.close(1013, 'server_busy'));
       });
       ws.on('error', () => { /* Close reconciles room presence. */ });
@@ -291,9 +348,13 @@ server.on('upgrade', (req, socket, head) => {
   } catch { deny(503); }
 });
 server.listen(port, host, () => console.log(`Hidden Crown listening on ${host}:${port}; public origin ${origin}`));
+const expiryTimer = setInterval(() => { expireWaitingRooms().catch(() => console.error('Waiting-room cleanup failed')); }, 5000);
+expiryTimer.unref();
+expireWaitingRooms().catch(() => console.error('Waiting-room cleanup failed'));
 let stopping = false;
 function shutdown() {
   if (stopping) return; stopping = true;
+  clearInterval(expiryTimer);
   for (const ws of wss.clients) ws.close(1001, 'server_restart');
   server.close(() => { store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); store.db.close(); process.exit(0); });
   setTimeout(() => process.exit(0), 10000).unref();

@@ -14,6 +14,7 @@ export function boardTransitions(before, after) {
 
 let previousView = null, motion = [], startedAt = 0;
 const duration = 360;
+export function resetBoardMotion(view) { previousView = view; motion = []; }
 export function animateBoard(board, view) {
   const changed = previousView !== view;
   if (changed && (!previousView || previousView.moves.length !== view.moves.length)) {

@@ -68,3 +68,31 @@ jobs:
             -v "$PWD/deploy/hidden-crown-proxy.conf:/etc/nginx/snippets/hidden-crown-proxy.conf:ro" \
             -v "$RUNNER_TEMP/hc-cert:/etc/letsencrypt/live/chess.example.com:ro" \
             nginx:stable-alpine nginx -t
+      - name: Compose deployment from environment configuration
+        shell: bash
+        env:
+          HIDDEN_CROWN_IMAGE: hidden-crown:test
+          PUBLIC_ORIGIN: http://127.0.0.1:8796
+          HOST_PORT: '8796'
+          ADMIN_USERNAME: compose-admin
+          ADMIN_PASSWORD: isolated-compose-test-password
+        run: |
+          set -euo pipefail
+          docker compose -p hc-compose config --quiet
+          docker compose -p hc-compose up -d --pull never
+          trap 'docker compose -p hc-compose logs; docker compose -p hc-compose down -v' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8796/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8796/healthz
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const response = await fetch('http://127.0.0.1:8796/api/admin/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD })
+          });
+          assert.equal(response.status, 200);
+          assert.ok((await response.json()).csrf);
+          console.log('Compose environment-based administrator login passed');
+          JS

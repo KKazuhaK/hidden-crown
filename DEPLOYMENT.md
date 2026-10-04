@@ -2,29 +2,68 @@
 
 当前生产部署使用 Node.js 24 + SQLite，所有房间、走棋与日志均保存在自己的服务器。无需 Cloudflare 账号或云数据库。一次只运行一个应用实例；多实例不能共享同一个 SQLite 文件来实现跨进程实时对局。
 
-## 从源码启动
+## 使用 Compose 拉取镜像（推荐）
 
-在安装了 Docker Engine 和 Compose 的 Linux 服务器上，进入项目根目录：
+服务器只需要 Docker Engine、Compose 插件，以及现有 Nginx 和 HTTPS 证书；无需安装 Node.js、SQLite 或下载源码。
+
+从个人私有仓库 `KKazuhaK/hidden-crown` 的 Releases 下载 `hidden-crown-compose.zip`，上传到服务器并解压到独立目录。包内包含 Compose、`.env.example`、说明和 Nginx 示例配置。
 
 ```bash
+unzip hidden-crown-compose.zip
 cp .env.example .env
-mkdir -p secrets
-chmod 700 secrets
-# 用本地编辑器填写 16–256 字符的管理员密码，不要提交这个文件。
-editor secrets/admin-password.txt
-# 容器使用 node 用户（UID/GID 1000），让它能读取挂载的秘密文件。
-sudo chown 1000:1000 secrets/admin-password.txt
-sudo chmod 600 secrets/admin-password.txt
+chmod 600 .env
+nano .env
 ```
 
-编辑 `.env`：将 `PUBLIC_ORIGIN` 改为实际的 HTTPS 地址，例如 `https://chess.your-domain.com`；设置 `ADMIN_USERNAME`。管理员从 `/admin` 使用这组账号、密码登录。
+在 `.env` 中集中配置：
+
+```dotenv
+PUBLIC_ORIGIN=https://chess.your-domain.com
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD='填写你自己的16至256字符密码'
+HOST_PORT=8787
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:1.0.0
+WAITING_TIMEOUT_MINUTES=15
+TRUSTED_PROXIES=
+```
+
+`PUBLIC_ORIGIN` 必须与浏览器访问的 HTTPS 地址完全一致。密码没有默认值；保留空密码会阻止启动。用单引号包住密码可保留 `$` 等字面字符，密码若包含单引号则按 Compose `.env` 语法转义。配置文件不会上传到 GitHub。管理员从 `/admin` 登录。
+
+源码仓库保持私有；部署镜像按用户授权设为公开，普通拉取不需要 GitHub 登录。完成配置后：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+docker compose pull
+docker compose up -d
+docker compose ps
 docker compose logs --tail=50
 ```
 
-SQLite 使用命名卷 `hidden-crown-data`，容器重建、升级不会丢掉对局。容器端口默认只发布到宿主机 `127.0.0.1:8787`。应用按 `PUBLIC_ORIGIN` 校验 Host 和 Origin；直接从内网访问时也需要正确的 Host。
+Docker 自动选择 AMD64 或 ARM64 镜像。SQLite 使用命名卷 `hidden-crown-data`，重建、升级不会丢掉对局。默认仅向宿主机 `127.0.0.1:8787` 发布端口。保持部署目录/Compose 项目名稳定，避免另建一个空数据卷；不要运行 `docker compose down -v`。
+
+普通配置修改后执行 `docker compose up -d`。`WAITING_TIMEOUT_MINUTES` 仅用于新数据库初始化；已有等待时限通过管理员后台修改。升级时修改 `HIDDEN_CROWN_IMAGE` 的版本，然后执行 `docker compose pull && docker compose up -d`；版本固定便于回滚，也可主动选用 `latest` 自动跟随稳定发布。
+
+## 可选：使用密码文件
+
+默认把账号密码集中在 `.env`，无需另建 secrets 文件。偏好密码文件的用户可用 `docker-compose.secrets.yml` 覆盖：把 `.env` 中 `ADMIN_PASSWORD` 设为 `using-password-file`（满足基础配置检查，最终容器环境会清空此值），并创建文件：
+
+```bash
+mkdir -p secrets
+chmod 700 secrets
+nano secrets/admin-password.txt
+sudo chown 1000:1000 secrets/admin-password.txt
+sudo chmod 600 secrets/admin-password.txt
+docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
+```
+
+更新和查看日志时也使用同样的两个 `-f` 参数。
+
+## 可选：从源码构建
+
+源码目录中仍可以使用上述 `.env` 配置运行：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
 
 ## Nginx
 
@@ -39,28 +78,11 @@ sudo systemctl reload nginx
 
 Nginx 在容器内时，需要让它和应用在同一个受控 Docker 网络中，并将反代 upstream 改为 `http://hidden-crown:8787`。同时填写它的确切容器 IP；不要把后端端口直接暴露到公网。
 
-## 发布镜像与简单拉取
+## 镜像发布机制
 
-流程参照 KazuhaHub/Passwall-Sub-Panel：版本标签 `v1.0.0` 触发 Release，先在原生 AMD64、ARM64 runner 上运行验证和容器启动检查，再发布对应架构镜像并组合 manifest。GHCR 标签为 `1.0.0`、稳定版 `latest`、最近发布版 `beta`。手动运行 Release 时也必须选择已有版本标签。发布需递增版本号；精确版本不重复覆盖。
+版本标签 `v1.0.0` 等触发 Release，先在原生 AMD64、ARM64 runner 验证引擎、服务端、容器、Compose 登录、持久化与 Nginx 配置，再构建两种架构并发布到 `ghcr.io/kkazuhak/hidden-crown`。每个发布包括精确版本标签、稳定版 `latest`、最近发布版 `beta` 和只含部署配置的 `hidden-crown-compose.zip`。手动发布也必须选择已有版本标签；精确版本不重复覆盖。
 
-仓库为个人账号下的私有仓库 `KKazuhaK/hidden-crown`。GHCR 镜像保持私有；先在服务器使用有此仓库访问权且具有 `read:packages` 权限的个人访问令牌登录，再拉取镜像。不要把令牌写进 Compose、`.env` 或命令行参数。
-
-```bash
-read -s -p "GHCR token: " HC_GHCR_TOKEN; echo
-printf '%s' "$HC_GHCR_TOKEN" | docker login ghcr.io -u KKazuhaK --password-stdin
-unset HC_GHCR_TOKEN
-```
-
-Release 中提供 Compose、`.env.example` 和 Nginx 配置，登录 GitHub 后下载。镜像需等待首次版本发布成功后才能拉取；若使用其他仓库名，替换 `.env` 的 `HIDDEN_CROWN_IMAGE`。
-
-完成上面的账号、密码及 Nginx 配置后：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-使用源码覆盖文件部署的用户仍使用 `-f docker-compose.yml -f docker-compose.build.yml`。固定镜像版本可将 `HIDDEN_CROWN_IMAGE` 设为 `ghcr.io/kkazuhak/hidden-crown:1.0.0`。升级前请备份数据卷；需要回滚时改回之前的版本并重新启动。
+镜像公开用于匿名拉取，源码仓库保持私有。发布包内的 `.env.example` 固定为该次发布的镜像版本。已完成的发布可在 [Releases](https://github.com/KKazuhaK/hidden-crown/releases) 查看；只有 Release 工作流成功后对应镜像才能拉取。升级前先备份数据卷。
 
 ## 默认防护与可调限额
 
@@ -68,6 +90,7 @@ docker compose up -d
 | --- | --- | --- |
 | 单 IP 创建房间 | 10 分钟容量 5，持续补充 | `CREATE_LIMIT_PER_IP` |
 | 全站创建房间 | 10 分钟容量 50，持续补充 | `CREATE_LIMIT_GLOBAL` |
+| 未开始对局等待上限 | 创建后 15 分钟 | `WAITING_TIMEOUT_MINUTES`（首次初始化）；后台持久化设置优先 |
 | 保存房间总数，包含已结束对局 | 1000 | `MAX_ROOMS` |
 | WebSocket 连接总数 | 512 | `MAX_CONNECTIONS` |
 | SQLite 主库页空间上限 | 256 MiB，另需 WAL/日志余量 | `MAX_DATABASE_BYTES` |
@@ -82,6 +105,10 @@ docker compose up -d
 限额按有界 token bucket 实现。伪造转发头不会绕过默认 IP 限额。未知房间请求不创建数据库记录；创建有全站串行准入和硬数量限制。达到资源上限后拒绝新操作，已有日志不会被静默删掉；管理员可先导出，再删除不再需要的房间。应用仅缓存最多 64 个房间，并将缓存内状态/日志的 JSON 字节总量限制到 24 MiB（解析后的实际堆占用更大）；同时限制单房间消息队列、消息大小和慢客户端发送缓冲。
 
 管理员登录 session 保存在服务器，Cookie 为 HttpOnly/SameSite=Strict，HTTPS 时设置 Secure，8 小时过期。结束/删除/退出登录要求 Origin 和 CSRF 凭证；退出或凭证修改会撤销 session。管理员观看连接独立于玩家和其他管理员。结束对局会保存原因与审计记录；删除会断开全部连接并移除对局和日志，保留有界操作审计，不会被延迟的连接关闭事件重新创建。
+
+后台可设置 1–1440 分钟的等待开局上限，设置保存在 SQLite 中，重启后保留。超时仅清理等待玩家与选择王冠的房间，时间从创建时计算，加入或重连不重置。对弈中及已结束的记录保留。服务启动、创建/加入/列表请求以及每 5 秒的后台扫描都会清理超时房间；缩短设置会立即清理已超时的房间，连接断开且记录永久删除。`WAITING_TIMEOUT_MINUTES` 仅指定新数据库的初始值，不覆盖已有后台设置。
+
+管理员列表的“玩家链接”可获取、复制或打开对应白方/黑方入口；请仅分享给对应玩家，因为专属链接会替换该玩家已有连接。玩家及管理员观战界面的走棋回放支持拖动时间线、逐步查看及点击走棋记录跳转；回放不会改变服务端棋局，查看历史期间不能提交游戏操作。
 
 Docker 还限制 384 MiB 内存、1 CPU、64 个进程，使用非 root 用户、只读根文件系统、移除 capabilities，并轮转运行日志。应用限流不能吸收超过服务器带宽的网络攻击；公网入口仍由 Nginx/上游网络防护承担。
 

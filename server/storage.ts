@@ -32,9 +32,9 @@ export class Store {
     this.db.prepare('INSERT INTO audit(at,action,room) VALUES(?,?,?)').run(Date.now(), action, room);
     this.db.prepare('DELETE FROM audit WHERE id <= (SELECT COALESCE(MAX(id),0)-10000 FROM audit)').run();
   }
-  delete(id: string) {
+  delete(id: string, action = 'room_deleted') {
     this.db.exec('BEGIN IMMEDIATE');
-    try { this.db.prepare('DELETE FROM rooms WHERE id=?').run(id); this.audit('room_deleted', id); this.db.exec('COMMIT'); }
+    try { this.db.prepare('DELETE FROM rooms WHERE id=?').run(id); this.audit(action, id); this.db.exec('COMMIT'); }
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
 }

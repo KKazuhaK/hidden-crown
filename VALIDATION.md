@@ -37,6 +37,8 @@ The user requested a simple last-move indicator and then asked for a Chess.com r
 
 ## GitHub CI
 
+The CI result below covers the initial published source commit. Subsequent local replay and expiry changes have their own checks recorded below.
+
 The first source commit, `8bd7e39a3f773b07eba1752fe7913e62eb2aceaa`, passed [GitHub Actions run 37174951859](https://github.com/KKazuhaK/hidden-crown/actions/runs/37174951859) on October 3, 2026 (America/Los_Angeles). Both `ubuntu-latest` (AMD64) and `ubuntu-24.04-arm` (ARM64) passed type checks, unit tests, the server build, self-hosted integration tests, actual Docker container games and room joins, persistence across container restart using a named volume, and Nginx configuration syntax checks. Docker and WSL are not installed locally; these container checks ran on GitHub's native runners.
 
 ## Remaining deployment checks
@@ -44,3 +46,14 @@ The first source commit, `8bd7e39a3f773b07eba1752fe7913e62eb2aceaa`, passed [Git
 The user's private GitHub repository is `KKazuhaK/hidden-crown`. A GHCR image release and remote application deployment have not run.
 
 The self-hosted server is tested locally. Production HTTPS, the user's server configuration, different-network play, real phone hardware and the researcher-run recorded session remain unverified. The retained Cloudflare adapter has a separate preview runtime and does not provide the Node administrator/global admission layer; existing Cloudflare data is not automatically migrated into SQLite.
+
+## Replay and waiting-room revision
+
+- 36 unit tests pass, including four replay tests that compare public reconstructed positions against engine states, captures, both-color castling, en passant, promotion, preserved permanent IDs and crown redaction.
+- 81 self-hosted assertions pass, adding authenticated player-link retrieval, settings authentication/CSRF/range validation, persisted settings across restart, periodic cleanup without HTTP requests, overdue crown-selection rejection, expired-room HTTP/WebSocket denial and retention of playing/ended games.
+- Actual browser checks: slider keyboard traversal, clickable notation, restored captured pawn, disabled game controls while viewing history, Return to live, and exactly one crown badge for a player in an unfinished game. An independent two-player game received a new capture while replay stayed at ply zero; the slider maximum advanced to three and Return to live displayed the latest capture.
+- Admin checks: manual refresh updates its timestamp, persisted timeout save shows success, White link copying matches the input value, buttons read “删除”, and confirmation actions have computed alignment `flex-end`; the deletion dialog was canceled. Console warnings/errors were empty.
+- At an actual 390-pixel browser viewport the replay page document width was 375 pixels, without horizontal overflow. Temporary viewport overrides were reset. Local proof screenshot: ignored `test-artifacts/replay-timeline.png`.
+- The updated local Node preview remains available on port 8790. These changes have not yet been pushed to GitHub or published as a Docker image.
+
+Administrator authorization follow-up: 82 self-hosted assertions passed. An isolated localhost browser check showed a specific authorization alert and login button without starting a WebSocket when signed out. Signing in returned to the original watch URL. Logging out from a second tab removed the watch board and displayed the expired-session alert, without reconnecting. Screenshot: ignored `test-artifacts/admin-authorization-required.png`. Return URLs are restricted to same-origin `/admin/watch` with a valid room number.
