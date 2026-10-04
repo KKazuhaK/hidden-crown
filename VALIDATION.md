@@ -136,3 +136,7 @@ Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and Post
 ## 2.3.4 timing layout and compact refresh button — 2026-10-04
 
 90 unit tests pass, including whole-second player presentation, three-decimal administrator presentation, invalid timing inputs and unchanged millisecond CSV values. Browser checks on a real HTTP/WebSocket room confirm one timer in the player operation panel, working sound toggle, integer player history and live clock, administrator three-decimal history and live clock, and the header rules dialog with no duplicate sidebar rules. English and Chinese views agree; the player panel has no horizontal overflow at 390px. The administrator refresh button uses intrinsic width (119.33 CSS pixels in the Chinese view), centers its content, and successfully refreshes the list. No game rules, database schema or exported timing precision change.
+
+## 2.3.5 administrator panel spacing — 2026-10-04
+
+Replaced settings-only margins with a scoped adjacent-panel rule for the administrator dashboard. Browser checks confirm 20px between settings, proxy diagnostics and the game list in English and Chinese. At 390px, both gaps remain 20px after refreshing the list, with no page-level horizontal overflow. The rule does not target login or game panels.
