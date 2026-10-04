@@ -35,8 +35,12 @@ Piece/movement revision: original SVG pieces replace Unicode glyphs in the board
 
 The user requested a simple last-move indicator and then asked for a Chess.com reference. Inspected the actual Chess.com analysis board after loading a sample PGN: its two last-move highlights use yellow at 50% opacity. Adopted the same overlay approach to preserve the underlying light/dark colors. Verified precisely two highlighted squares (g8/f6), with no extra arrow or text panel, in the updated local browser. Screenshots: chess-style-last-move.png and vector-pieces-last-move.png. The earlier gray-highlight screenshots are superseded.
 
-## Pending external checks
+## GitHub CI
 
-Docker and WSL are not installed on this machine. Real Docker/Nginx runtime checks and native AMD64/ARM64 builds are included in CI; their remote results are reported separately from the local checks above. The user's private GitHub repository is `KKazuhaK/hidden-crown`. This validation record does not claim a GHCR image release or remote application deployment.
+The first source commit, `8bd7e39a3f773b07eba1752fe7913e62eb2aceaa`, passed [GitHub Actions run 37174951859](https://github.com/KKazuhaK/hidden-crown/actions/runs/37174951859) on October 3, 2026 (America/Los_Angeles). Both `ubuntu-latest` (AMD64) and `ubuntu-24.04-arm` (ARM64) passed type checks, unit tests, the server build, self-hosted integration tests, actual Docker container games and room joins, persistence across container restart using a named volume, and Nginx configuration syntax checks. Docker and WSL are not installed locally; these container checks ran on GitHub's native runners.
+
+## Remaining deployment checks
+
+The user's private GitHub repository is `KKazuhaK/hidden-crown`. A GHCR image release and remote application deployment have not run.
 
 The self-hosted server is tested locally. Production HTTPS, the user's server configuration, different-network play, real phone hardware and the researcher-run recorded session remain unverified. The retained Cloudflare adapter has a separate preview runtime and does not provide the Node administrator/global admission layer; existing Cloudflare data is not automatically migrated into SQLite.
