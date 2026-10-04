@@ -11,7 +11,7 @@ export type ServerMessage =
   | { type: "welcome"; role: Role }
   | { type: "state"; view: View }
   | { type: "log"; events: LogEvent[]; moves: GameState["moves"]; crowns: GameState["crowns"] }
-  | { type: "links"; links: Links }
+  | { type: "links"; links: Partial<Links> }
   | { type: "error"; code: string; message: string }
   | { type: "pong" };
 
@@ -42,6 +42,7 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
 export function viewFor(state: GameState, role: Role, connected: View["connected"], now = Date.now()): View {
   // Explicit allowlist: adding server-only state fields cannot accidentally disclose them.
   const view: View = {
+    ...(state.computer ? { computer: state.computer } : {}),
     revision: state.revision, ruleset: state.ruleset, initialPosition: state.initialPosition,
     role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn, moves: state.moves,
     connected, playStartedAt: state.playStartedAt, lastMoveAt: state.lastMoveAt, serverNow: now,
@@ -56,4 +57,8 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
 export function linksFor(state: GameState): Links {
   const link = (role: Role) => `/?room=${encodeURIComponent(state.roomId)}#t=${encodeURIComponent(state.tokens[role])}`;
   return { white: link("w"), black: link("b"), observer: link("observer") };
+}
+export function playerLinksFor(state: GameState): Partial<Pick<Links, 'white' | 'black'>> {
+  const links = linksFor(state);
+  return { ...(state.computer?.color !== 'w' ? { white: links.white } : {}), ...(state.computer?.color !== 'b' ? { black: links.black } : {}) };
 }

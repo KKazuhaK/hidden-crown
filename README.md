@@ -38,11 +38,21 @@ When npm is missing from PATH in the Codex workspace, its bundled pnpm can invok
 
 Create a room and share its eight-character number. The first person entering it chooses White or Black; the next person receives the other side. Joining never automatically reuses a browser-wide credential. Each tab keeps its current token in sessionStorage; optional resume buttons use separately stored White/Black credentials. Opening the same private role link still intentionally replaces the earlier connection to that role.
 
-The home page displays only White and Black private links, with matching Copy/Open button styles. Creation responses omit observer links. Public observer-token authentication is disabled; only an authenticated administrator can open the live god view. The administrator can see both crowns, move times, player presence, JSON/CSV exports, and all rooms with pagination. End-game preserves the record and reveals crowns; Delete removes the room and logs after an explicit UI confirmation.
+The header opens the dedicated `/create` page. Friend-room results display immediately there, with White and Black private links and matching Copy/Open button styles. Refreshing restores links within the same browser session. `/rules` and the in-game Rules dialog describe gameplay. Creation responses omit observer links. Public observer-token authentication is disabled; only an authenticated administrator can open the live god view. The administrator can see both crowns, move times, player presence, JSON/CSV exports, and all rooms with pagination. End-game preserves the record and reveals crowns; Delete removes the room and logs after an explicit UI confirmation.
 
 The seven-ply smoke game: White crowns `wK`, Black crowns `bBf`; play `e2-e4`, `g7-g5`, `Qd1-h5`, `a7-a6`, `Qh5xf7`, `a6-a5`, `Qf7xf8`. The normal pawn capture continues play, while capture of the crowned bishop wins.
 
-## Validation
+## Human vs computer (2.1)
+
+Select Computer on `/create`, then Easy, Medium or Hard and White, Black or Random. A computer game reserves both seats and returns only the human's private link. Room-number joining cannot take over either seat. Returning through that link resumes the game after disconnects or a server restart.
+
+The computer chooses its own secret crown and searches only a projection of public pieces, board, rule options and its own crown. It never receives the human's crown, credentials or private logs. Easy usually chooses a random legal move; Medium and Hard use bounded iterative alpha-beta search with larger depth/node/time budgets. This is an engine for this variant, without an Elo rating. The authoritative rule engine revalidates every returned move, including promotions, castling and en passant. The computer declines draw offers.
+
+Searches run in a shared worker pool, default two workers, with bounded queue, memory and execution time. Default admission allows 50 unfinished computer rooms. Computation pauses while the human is disconnected. Revision checks discard stale results after a new state, administrative termination or deletion. Both SQLite and PostgreSQL persist computer configuration and moves. Version 2.1 automatically migrates 2.0 databases; retain the same database path/URL and back up before upgrading. The retained Cloudflare adapter currently supports friend games only.
+
+Run `npm run test:computer` for isolated real HTTP/WebSocket tests, with `TEST_DATABASE_URL` set for PostgreSQL. Against a disposable deployed container, provide `HIDDEN_CROWN_URL` and test administrator credentials; the suite creates and deletes only its own rooms.
+
+## Validation commands
 
 ```powershell
 npm test

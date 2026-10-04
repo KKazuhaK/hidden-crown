@@ -14,6 +14,10 @@ const versions = [{ version: 1, statements: [
   'CREATE TABLE hc_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)',
   'CREATE TABLE hc_audit(id TEXT PRIMARY KEY,at BIGINT NOT NULL,action TEXT NOT NULL,room TEXT)',
   'CREATE INDEX hc_audit_time ON hc_audit(at,id)'
+] }, { version: 2, statements: [
+  'ALTER TABLE hc_rooms ADD COLUMN computer_color TEXT',
+  'ALTER TABLE hc_rooms ADD COLUMN computer_difficulty TEXT',
+  'CREATE INDEX hc_room_computer ON hc_rooms(computer_color,phase)'
 ] }];
 export async function migrate(database: Database) {
   await database.transaction(async tx => {

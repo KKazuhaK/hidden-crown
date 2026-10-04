@@ -19,9 +19,12 @@ export function configuration() {
   if (initialWait > 1440) throw new Error('WAITING_TIMEOUT_MINUTES must be 1 to 1440');
   const poolSize = integer('PG_POOL_MAX', 10, 2);
   if (poolSize > 100) throw new Error('PG_POOL_MAX must be 2 to 100');
+  const computerWorkers = integer('COMPUTER_WORKERS', 2);
+  if (computerWorkers > 4) throw new Error('COMPUTER_WORKERS must be 1 to 4');
   const proxies = new Set((process.env.TRUSTED_PROXIES ?? '').split(',').map(value => value.trim()).filter(Boolean));
   for (const peer of proxies) if (!/^[\da-fA-F:.]+$/.test(peer)) throw new Error('TRUSTED_PROXIES requires exact IP addresses');
-  return { port, host, origin, secure, username, password, databaseUrl, poolSize, proxies, initialWait,
+  return { port, host, origin, secure, username, password, databaseUrl, poolSize, proxies, initialWait, computerWorkers,
+    maxComputerRooms: integer('MAX_COMPUTER_ROOMS', 50),
     databasePath: process.env.DATABASE_PATH ?? 'data/hidden-crown-v2.sqlite',
     maxRooms: integer('MAX_ROOMS', 10000), maxActiveRooms: integer('MAX_ACTIVE_ROOMS', 256),
     maxLoadedRooms: integer('MAX_LOADED_ROOMS', 256), maxConnections: integer('MAX_CONNECTIONS', 512),

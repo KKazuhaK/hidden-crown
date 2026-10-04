@@ -1,3 +1,4 @@
 import { build } from 'esbuild';
 await build({ entryPoints: ['server/index.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', outfile: 'dist/server.mjs', packages: 'external', sourcemap: true });
 await build({ entryPoints: ['server/database/sqlite-worker.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', outfile: 'dist/sqlite-worker.mjs', packages: 'external', sourcemap: true });
+await build({ entryPoints: ['server/computer-worker.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', outfile: 'dist/computer-worker.mjs', packages: 'external', sourcemap: true });

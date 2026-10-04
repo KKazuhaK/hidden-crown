@@ -19,12 +19,23 @@ export class Limiter {
     if (entry.tokens < 1) return false;
     entry.tokens--; return true;
   }
+  retryAfter(key: string, now = Date.now()) {
+    const entry = this.entries.get(key);
+    if (!entry) return Math.ceil(this.windowMs / 1000);
+    const tokens = Math.min(this.capacity, entry.tokens + (now - entry.at) * this.capacity / this.windowMs);
+    return Math.max(1, Math.ceil((1 - tokens) * this.windowMs / this.capacity / 1000));
+  }
+}
+export function proxyInfo(request: IncomingMessage, proxies: Set<string>) {
+  const normalize = (ip: string) => ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  const peerIp = normalize(request.socket.remoteAddress ?? 'unknown');
+  const forwarded = request.headers['x-forwarded-for'];
+  const proxyTrusted = proxies.has(peerIp);
+  const forwardedAccepted = proxyTrusted && typeof forwarded === 'string' && !!isIP(forwarded.trim());
+  return { peerIp, clientIp: forwardedAccepted ? normalize((forwarded as string).trim()) : peerIp,
+    proxyTrusted, forwardedHeaderPresent: forwarded !== undefined, forwardedAccepted };
 }
 export function clientIp(request: IncomingMessage, proxies: Set<string>) {
-  const normalize = (ip: string) => ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-  const peer = normalize(request.socket.remoteAddress ?? 'unknown');
   // Only an explicitly trusted peer may supply the single address overwritten by Nginx.
-  const forwarded = request.headers['x-forwarded-for'];
-  return proxies.has(peer) && typeof forwarded === 'string' && isIP(forwarded.trim())
-    ? normalize(forwarded.trim()) : peer;
+  return proxyInfo(request, proxies).clientIp;
 }

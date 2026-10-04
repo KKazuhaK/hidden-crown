@@ -38,6 +38,12 @@ jobs:
           TEST_DATABASE_URL: ''
       - name: PostgreSQL complete runtime checks
         run: npm run test:selfhost
+      - name: SQLite computer runtime
+        run: npm run test:computer
+        env:
+          TEST_DATABASE_URL: ''
+      - name: PostgreSQL computer runtime
+        run: npm run test:computer
       - name: Container runtime and persistent volume
         shell: bash
         run: |
@@ -65,6 +71,7 @@ jobs:
           export HIDDEN_CROWN_ADMIN_PASSWORD=isolated-container-test-password
           node scripts/room-smoke.mjs
           node scripts/join-smoke.mjs
+          node scripts/computer-smoke.mjs
           node scripts/persistence-smoke.mjs prepare
           docker restart hc-test
           for attempt in $(seq 1 20); do
@@ -79,6 +86,7 @@ jobs:
             sleep 1
           done
           node scripts/capacity-smoke.mjs
+          node scripts/computer-capacity.mjs
       - name: Nginx configuration syntax
         shell: bash
         run: |

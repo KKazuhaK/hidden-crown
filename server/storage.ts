@@ -4,9 +4,9 @@ import type { RoomSnapshot } from '../src/persistence';
 import type { Database, Queryable, SqlRow } from './database/contract';
 import { migrate } from './database/migrations';
 
-export interface RoomSummary { id: string; created_at: number; phase: string; ply: number; bytes: number; ruleset_id: string; ruleset_version: number }
+export interface RoomSummary { id: string; created_at: number; phase: string; ply: number; bytes: number; ruleset_id: string; ruleset_version: number; computer_color: string | null; computer_difficulty: string | null }
 function summary(row: SqlRow): RoomSummary {
-  return { id: String(row.id), created_at: Number(row.created_at), phase: String(row.phase), ply: Number(row.ply), bytes: Number(row.bytes), ruleset_id: String(row.ruleset_id), ruleset_version: Number(row.ruleset_version) };
+  return { id: String(row.id), created_at: Number(row.created_at), phase: String(row.phase), ply: Number(row.ply), bytes: Number(row.bytes), ruleset_id: String(row.ruleset_id), ruleset_version: Number(row.ruleset_version), computer_color: row.computer_color ? String(row.computer_color) : null, computer_difficulty: row.computer_difficulty ? String(row.computer_difficulty) : null };
 }
 function encodeSnapshot(state: Omit<GameState, 'moves'>) {
   // Keep private crown choices equal-sized even for IDs such as wK versus wRh.
@@ -28,7 +28,7 @@ function decodeEvent(data: string) {
 export class Store {
   constructor(readonly database: Database, private maxRoomBytes: number) {}
   async initialize() { await migrate(this.database); }
-  async header(id: string) { const row = (await this.database.query('SELECT id,created_at,phase,ply,bytes,ruleset_id,ruleset_version FROM hc_rooms WHERE id=$1', [id]))[0]; return row ? summary(row) : undefined; }
+  async header(id: string) { const row = (await this.database.query('SELECT id,created_at,phase,ply,bytes,ruleset_id,ruleset_version,computer_color,computer_difficulty FROM hc_rooms WHERE id=$1', [id]))[0]; return row ? summary(row) : undefined; }
   async load(id: string): Promise<RoomSnapshot | undefined> {
     return this.database.transaction(async tx => {
       // Lock the snapshot through all history reads so they cannot straddle a commit.
@@ -50,6 +50,7 @@ export class Store {
       if ((!old && expectedRevision !== 0) || (old && Number(old.revision) !== expectedRevision) || state.revision !== expectedRevision + 1) throw new Error('room_conflict');
       if (old && (old.ruleset_id !== state.ruleset.id || Number(old.ruleset_version) !== state.ruleset.version)) throw new Error('room_ruleset_immutable');
       if (old && JSON.stringify(JSON.parse(String(old.state)).ruleset.options) !== JSON.stringify(state.ruleset.options)) throw new Error('room_ruleset_immutable');
+      if (old && JSON.stringify(JSON.parse(String(old.state)).computer) !== JSON.stringify(state.computer)) throw new Error('room_computer_immutable');
       const previousPly = Number(old?.ply ?? 0), previousEvents = Number(old?.event_count ?? 0);
       if (state.ply < previousPly || state.ply !== moves.length || state.ply > previousPly + 64 || events.length > 64) throw new Error('room_history_inconsistent');
       const appended = moves.slice(previousPly).map(move => ({ value: move, data: JSON.stringify(move) }));
@@ -59,9 +60,9 @@ export class Store {
       const bytes = snapshotBytes + historyBytes;
       if (bytes > this.maxRoomBytes) throw new Error('room_storage_limit');
       validate?.(bytes);
-      const values = [json, state.revision, state.createdAt, state.phase, state.ply, bytes, historyBytes, previousEvents + events.length, state.ruleset.id, state.ruleset.version, state.roomId];
-      if (old) await tx.query('UPDATE hc_rooms SET state=$1,revision=$2,created_at=$3,phase=$4,ply=$5,bytes=$6,history_bytes=$7,event_count=$8,ruleset_id=$9,ruleset_version=$10 WHERE id=$11', values);
-      else await tx.query('INSERT INTO hc_rooms(state,revision,created_at,phase,ply,bytes,history_bytes,event_count,ruleset_id,ruleset_version,id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', values);
+      const values = [json, state.revision, state.createdAt, state.phase, state.ply, bytes, historyBytes, previousEvents + events.length, state.ruleset.id, state.ruleset.version, state.roomId, state.computer?.color ?? null, state.computer?.difficulty ?? null];
+      if (old) await tx.query('UPDATE hc_rooms SET state=$1,revision=$2,created_at=$3,phase=$4,ply=$5,bytes=$6,history_bytes=$7,event_count=$8,ruleset_id=$9,ruleset_version=$10,computer_color=$12,computer_difficulty=$13 WHERE id=$11', values);
+      else await tx.query('INSERT INTO hc_rooms(state,revision,created_at,phase,ply,bytes,history_bytes,event_count,ruleset_id,ruleset_version,id,computer_color,computer_difficulty) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', values);
       for (const move of appended) await tx.query('INSERT INTO hc_moves VALUES($1,$2,$3,$4)', [state.roomId, move.value.ply, move.value.at, move.data]);
       for (let index = 0; index < addedEvents.length; index++) {
         const event = addedEvents[index];
@@ -76,7 +77,8 @@ export class Store {
       COALESCE(SUM(CASE WHEN phase<>'ended' THEN 1 ELSE 0 END),0) AS active FROM hc_rooms`))[0];
     return { rooms: Number(row.rooms), bytes: Number(row.bytes), active: Number(row.active) };
   }
-  async list(page: number) { return (await this.database.query('SELECT id,created_at,phase,ply,bytes,ruleset_id,ruleset_version FROM hc_rooms ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET $1', [(page - 1) * 50])).map(summary); }
+  async list(page: number) { return (await this.database.query('SELECT id,created_at,phase,ply,bytes,ruleset_id,ruleset_version,computer_color,computer_difficulty FROM hc_rooms ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET $1', [(page - 1) * 50])).map(summary); }
+  async computerCount() { return Number((await this.database.query("SELECT COUNT(*) AS n FROM hc_rooms WHERE computer_color IS NOT NULL AND phase<>'ended'"))[0].n); }
   async expired(before: number) { return (await this.database.query("SELECT id FROM hc_rooms WHERE phase IN ('lobby','crown_select') AND created_at<=$1 ORDER BY created_at LIMIT 100", [before])).map(row => String(row.id)); }
   async metadata(key: string) { const row = (await this.database.query('SELECT value FROM hc_metadata WHERE key=$1', [key]))[0]; return row ? String(row.value) : undefined; }
   async setMetadata(key: string, value: string) { await this.database.query('INSERT INTO hc_metadata VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value', [key, value]); }

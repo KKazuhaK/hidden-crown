@@ -22,9 +22,9 @@ button:disabled { opacity:.45; cursor:default; }
 .admin-refresh { width:160px; flex-shrink:0; justify-content:flex-start; white-space:nowrap; }
 @keyframes refresh-spin { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .is-refreshing .button-icon { animation:none; } }
-button:focus-visible,a:focus-visible,input:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
 a { color:var(--accent); }
-.site-header { max-width:1200px; margin:auto; padding:23px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); gap:12px; }
+.site-header { max-width:1200px; margin:auto; padding:23px 32px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); gap:12px; }
 .header-actions { display:flex; align-items:center; gap:10px; flex-shrink:0; }
 .header-actions button { white-space:nowrap; }
 .brand { color:var(--text); text-decoration:none; font-weight:650; font-size:20px; letter-spacing:-.5px; display:flex; align-items:center; gap:10px; }
@@ -41,6 +41,18 @@ h3 { font-size:14px; font-weight:600; }
 .small { font-size:13px; }
 .eyebrow { text-transform:uppercase; font-size:11px; letter-spacing:2px; font-weight:650; color:var(--muted); }
 .home { max-width:800px; margin:24px auto; }
+.create-page { max-width:720px; margin:8px auto; }
+.create-page .invites { margin-top:0; }
+.create-page h1 { font-size:32px; }
+.create-form { display:grid; gap:18px; margin-top:24px; }
+.create-field { display:grid; gap:6px; }
+.create-field select { width:100%; font:inherit; padding:11px 12px; border:1px solid var(--line); border-radius:7px; color:var(--text); background:var(--bg); }
+.create-form > button { justify-self:start; }
+.page-actions { margin-top:20px; }
+.rules-extra { margin:20px 0; color:var(--muted); }
+.home-computer { margin-top:18px; }
+#rules-dialog { max-height:85vh; overflow:auto; }
+#rules-dialog .actions { justify-content:flex-end; margin-top:18px; }
 .hero { text-align:center; padding:12px 10px 28px; }
 .hero-icon { font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',serif; color:var(--accent); font-size:52px; line-height:1.3; }
 .hero h1 { font-family:Georgia,'Times New Roman','Noto Serif CJK SC','Songti SC',SimSun,serif; font-size:clamp(28px,3.5vw,40px); font-weight:400; line-height:1.35; letter-spacing:-.5px; margin:16px auto; max-width:720px; text-wrap:balance; }

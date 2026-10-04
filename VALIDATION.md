@@ -85,6 +85,14 @@ Administrator authorization follow-up: 82 self-hosted assertions passed. An isol
 - CI additionally runs real PostgreSQL 16, both backend runtime suites, read-only native AMD64/ARM64 containers, a 100-player SQLite container benchmark at 1 CPU/384 MiB, all three Compose templates, and restart persistence. Inspect the CI result for the exact published commit before deployment.
 - Version 2.0 deliberately starts with a fresh store. No 1.x data import or user-server deployment has been performed.
 
+## 2.1 computer and creation pages (2026-10-04)
+
+- SQLite and isolated PostgreSQL 18.4 each passed 122 actual HTTP/WebSocket computer assertions: all three difficulties and both sides, private-link-only human access, reserved-seat refusal, crown privacy, bot draw response, offline pause, reconnect/restart and administrative termination/deletion.
+- Engine tests validate special-move parity with the authoritative engine, tactical decisions, distinct bounded search budgets, identical search inputs for different human crown selections, stale callback refusal, bounded worker queue and shutdown cancellation.
+- Browser checks cover separate creation results and refresh recovery, 390px creation controls, black-side Hard game with actual computer moves, one visible player crown badge, in-game Rules dialog, and 320px game width without overflow. The old 2.0 SQLite preview retained its saved game after the 2.1 schema migration. Screenshots are ignored test artifacts.
+- The proxy regression tests verify exact peer trust, forwarded-chain rejection, anti-spoofing and token refill wait times. Authenticated `/api/admin/network` provides only the current administrator connection's proxy/client diagnosis. Creation rejection identifies per-IP/global scope with an actual Retry-After value.
+- A local Windows load check completed 50 Hard games, 100 computer moves and 150 total plies using the two-worker pool: 2.05 seconds, health-request p95 9.19ms, RSS 150 MiB. The local run had no CPU/memory cgroup limit; native CI repeats it in a 1 CPU/384 MiB read-only container. These measurements are not a production capacity guarantee.
+
 ### Published 2.0.0 verification
 
 - Release commit `8436e94d173ecb64b70977c86259085ad6e22282` passed [main CI](https://github.com/KKazuhaK/hidden-crown/actions/runs/37194736958) and [Release CI](https://github.com/KKazuhaK/hidden-crown/actions/runs/37194889381) on both native architectures. The PostgreSQL Compose suite uses an isolated higher creation allowance so separate game/join suites do not exhaust the production default token bucket; production throttling is still covered by the complete runtime suites.

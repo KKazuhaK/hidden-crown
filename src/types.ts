@@ -4,6 +4,8 @@ export type PieceType = "K" | "Q" | "R" | "B" | "N" | "P";
 export type Promotion = "Q" | "R" | "B" | "N";
 export type Square = number;
 export type Phase = "lobby" | "crown_select" | "playing" | "ended";
+export type Difficulty = 'easy' | 'medium' | 'hard';
+export interface ComputerConfig { color: Color; difficulty: Difficulty }
 export interface Piece {
   id: string;
   color: Color;
@@ -29,6 +31,7 @@ export interface MoveRecord extends Move {
   thinkMs: number;
 }
 export interface GameState {
+  computer?: ComputerConfig;
   revision: number;
   ruleset: RuleSelection;
   initialPosition: InitialPosition;
@@ -59,6 +62,7 @@ export interface LogEvent {
   data?: Record<string, unknown>;
 }
 export interface View {
+  computer?: ComputerConfig;
   revision: number;
   ruleset: RuleSelection;
   initialPosition: InitialPosition;

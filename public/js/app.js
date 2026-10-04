@@ -7,8 +7,11 @@ import { replayAt } from './replay.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const createButton = document.querySelector('#create-room');
-createButton.addEventListener('click', createRoom);
-const roomId = new URLSearchParams(location.search).get('room');
+createButton.addEventListener('click', () => location.assign('/create'));
+const params = new URLSearchParams(location.search), createPage = location.pathname === '/create', rulesPage = location.pathname === '/rules';
+const roomId = createPage || rulesPage ? null : params.get('room');
+document.querySelector('#show-rules').addEventListener('click', () => roomId ? openRulesDialog() : location.assign('/rules'));
+document.querySelector('#rules-close').addEventListener('click', () => document.querySelector('#rules-dialog').close());
 const adminWatch = location.pathname === '/admin/watch';
 const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('t');
 const token = roomId && !adminWatch ? (fragmentToken || sessionStorage.getItem(`hidden-crown:room:${roomId}`)) : null;
@@ -18,10 +21,19 @@ let connection = 'connecting', attempts = 0, reconnectTimer, pingTimer, noticeTi
 let inviteLinks = null, observerLinks = null, exportKind = null, creating = false;
 let createdRoomId = null, joinCode = '', joining = false, joinError = null;
 let clockAnchor = { serverNow: 0, receivedAt: 0 }, promotionMoves = null;
-let rulesOpen = true, noticeKey = null, lastPong = 0;
+let rulesOpen = true, noticeKey = null, noticeValues = {}, lastPong = 0;
 let confirmationKey = null, confirmationAction = null;
 let replayPly = null;
 let connectAttempt = 0;
+let createMode = params.get('mode') === 'computer' ? 'computer' : 'friends', difficulty = 'medium', humanColor = 'w';
+let computerAvailable = false, capabilitiesLoaded = false;
+let creationError = null;
+if (createPage && params.get('room')) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(`hidden-crown:created:${params.get('room')}`));
+    if (saved?.roomId === params.get('room') && saved.links?.white && saved.links?.black) { inviteLinks = saved.links; createdRoomId = saved.roomId; }
+  } catch { /* Missing browser session returns to the creation form. */ }
+}
 const displayedView = () => replayPly === null ? view : replayAt(view, replayPly);
 
 function node(tag, className, text) {
@@ -33,9 +45,9 @@ function button(label, action, className = '', disabled = false, icon = '') {
   withIcon(element, label, icon);
   element.addEventListener('click', action); return element;
 }
-function notice(key) {
-  noticeKey = key;
-  const element = document.querySelector('#notice'); element.textContent = t(key); element.hidden = false;
+function notice(key, values = {}) {
+  noticeKey = key; noticeValues = values;
+  const element = document.querySelector('#notice'); element.textContent = t(key, values); element.hidden = false;
   clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { element.hidden = true; }, 4000);
 }
 function askConfirmation(key, action) {
@@ -65,12 +77,20 @@ function send(message) {
   if (socket?.readyState !== WebSocket.OPEN || connection !== 'connected') return false;
   socket.send(JSON.stringify(message)); return true;
 }
-function rules() {
-  const details = node('details', 'panel'); details.open = rulesOpen;
+function rules(open = rulesOpen) {
+  const details = node('details', 'panel'); details.open = open;
   details.append(node('summary', '', t('rules')));
   const options = view?.ruleset?.options ?? { castling: true, enPassant: true, drawPlyLimit: 100 };
   const list = node('ol'); for (let i = 1; i <= 5; i++) list.append(node('li', '', i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : t(`rule${i}`, { plies: options.drawPlyLimit })));
   details.append(list); details.addEventListener('toggle', () => { rulesOpen = details.open; }); return details;
+}
+function openRulesDialog() {
+  renderRulesDialog(); document.querySelector('#rules-dialog').showModal();
+}
+function renderRulesDialog() {
+  document.querySelector('#rules-dialog-title').textContent = t('rules');
+  document.querySelector('#rules-dialog-content').replaceChildren(rules(true), node('p', 'rules-extra', t('rulesExtra')));
+  withIcon(document.querySelector('#rules-close'), t('closeRules'), 'close');
 }
 function linkRows(links) {
   const panel = node('section', 'panel invites'); panel.append(node('h2', '', t('roomReady')), node('p', 'small', t('linksHelp')));
@@ -80,6 +100,7 @@ function linkRows(links) {
     panel.append(number);
   }
   for (const role of ['white', 'black']) {
+    if (!links[role]) continue;
     const row = node('div', 'invite-row');
     const label = node('div'); label.append(node('strong', '', t(role)));
     const input = node('input'); input.readOnly = true; input.value = absolute(links[role]); input.setAttribute('aria-label', t(role));
@@ -146,25 +167,73 @@ function renderHome() {
   const home = node('div', 'home'), hero = node('section', 'hero');
   hero.append(node('p', 'eyebrow', t('homeTag')), node('div', 'hero-icon', '♔\uFE0E'), homeTitle(), node('p', 'description', t('description')));
   hero.append(joinPanel());
+  if (computerAvailable) hero.append(button(t('playComputer'), () => location.assign('/create?mode=computer'), 'home-computer', false, 'computer'));
   const features = node('div', 'features'); for (const key of ['featureSecret', 'featureRemote', 'featureTime']) features.append(node('span', '', t(key)));
   hero.append(features); home.append(hero);
-  if (inviteLinks) home.append(linkRows(inviteLinks));
-  home.append(rules()); app.replaceChildren(home);
+  app.replaceChildren(home);
+}
+function selectField(label, id, options, value, changed) {
+  const field = node('div', 'create-field'), text = node('label', '', label); text.htmlFor = id;
+  const select = node('select'); select.id = id; select.disabled = creating;
+  for (const [key, name] of options) { const option = node('option', '', name); option.value = key; select.append(option); }
+  select.value = value; select.addEventListener('change', () => changed(select.value)); field.append(text, select); return field;
+}
+function renderCreate() {
+  const page = node('div', 'create-page');
+  if (inviteLinks) {
+    page.append(linkRows(inviteLinks));
+    const actions = node('div', 'actions page-actions');
+    actions.append(button(t('backHome'), () => location.assign('/'), '', false, 'back'), button(t('createAnother'), () => location.assign('/create'), '', false, 'plus'));
+    page.append(actions); app.replaceChildren(page); return;
+  }
+  const panel = node('section', 'panel'); panel.append(node('h1', '', t('create')), node('p', 'small', t('createIntro')));
+  const form = node('form', 'create-form');
+  form.append(selectField(t('gameMode'), 'game-mode', [['friends', t('playFriend')], ['computer', t('playComputer')]], createMode, value => { createMode = value; render(); }));
+  if (createMode === 'computer') {
+    form.append(selectField(t('difficulty'), 'computer-difficulty', ['easy', 'medium', 'hard'].map(key => [key, t(`difficulty_${key}`)]), difficulty, value => { difficulty = value; }));
+    form.append(selectField(t('yourSide'), 'human-color', [['w', t('white')], ['b', t('black')], ['random', t('randomSide')]], humanColor, value => { humanColor = value; }));
+    form.append(node('p', 'small', t('computerHelp')));
+    if (!computerAvailable) form.append(node('p', 'small', t(capabilitiesLoaded ? 'error_computer_unavailable' : 'connecting')));
+  }
+  const submit = node('button', 'primary'); submit.type = 'submit';
+  withIcon(submit, t(creating ? 'creating' : createMode === 'computer' ? 'startComputer' : 'create'), createMode === 'computer' ? 'computer' : 'plus');
+  submit.disabled = creating || (createMode === 'computer' && !computerAvailable);
+  form.append(submit); form.addEventListener('submit', event => { event.preventDefault(); createRoom(); }); panel.append(form);
+  if (creationError) { const alert = node('p', 'join-error', t(creationError.key, creationError.values)); alert.setAttribute('role', 'alert'); panel.append(alert); }
+  page.append(panel); app.replaceChildren(page);
+}
+function renderRulesPage() {
+  const page = node('div', 'create-page'); page.append(node('h1', '', t('rules')), rules(true), node('p', 'rules-extra', t('rulesExtra')),
+    button(t('backHome'), () => location.assign('/'), '', false, 'back'));
+  app.replaceChildren(page);
 }
 async function createRoom() {
   if (creating || joining) return;
-  creating = true; render();
+  creating = true; creationError = null; render();
   try {
-    const response = await fetch('/api/rooms', { method: 'POST' });
-    if (!response.ok) { const data = await response.json().catch(() => ({})); notice(`error_${data.code ?? 'request'}`); return; }
-    const data = await response.json(); inviteLinks = data.links; createdRoomId = data.roomId;
-  } catch { notice('error_request'); } finally { creating = false; render(); }
+    const response = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createMode === 'computer' ? { computer: { humanColor, difficulty } } : {}) });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const key = data.code === 'rate_limited' && data.scope?.startsWith('create_') ? `error_${data.scope}` : `error_${data.code ?? 'request'}`;
+      creationError = { key, values: { seconds: data.retryAfter ?? response.headers.get('Retry-After') ?? 60 } }; return;
+    }
+    const data = await response.json();
+    if (data.computer) {
+      const target = new URL(data.link, location.origin);
+      localStorage.setItem(`hidden-crown:room:${data.roomId}:${data.role}`, new URLSearchParams(target.hash.slice(1)).get('t'));
+      location.assign(target.href); return;
+    }
+    inviteLinks = data.links; createdRoomId = data.roomId;
+    sessionStorage.setItem(`hidden-crown:created:${data.roomId}`, JSON.stringify(data));
+    history.replaceState(null, '', `/create?room=${encodeURIComponent(data.roomId)}`);
+    window.scrollTo({ top: 0 });
+  } catch { creationError = { key: 'error_request', values: {} }; } finally { creating = false; render(); }
 }
 function presence() {
   const element = node('div', 'presence');
   for (const color of ['w', 'b']) {
     const item = node('span', 'presence-item'); item.title = t(view.connected[color] ? 'connected' : 'offline');
-    item.append(node('span', `dot ${view.connected[color] ? 'online' : ''}`), node('span', '', colorName(color))); element.append(item);
+    item.append(node('span', `dot ${view.connected[color] ? 'online' : ''}`), node('span', '', view.computer?.color === color ? t('computerSide', { color: colorName(color) }) : colorName(color))); element.append(item);
   }
   return element;
 }
@@ -223,6 +292,7 @@ function resultPanel() {
     if (piece.square === null && capture) text += ' · ' + t('capturedAt', { square: squareName(capture.to) });
     panel.append(node('p', 'reveal-lines', text));
   }
+  if (view.computer && view.role !== 'observer') panel.append(button(t('playAgain'), () => location.assign('/create?mode=computer'), 'primary', false, 'computer'));
   return panel;
 }
 function observerPanel() {
@@ -277,7 +347,7 @@ function statusText() {
   if (view.phase === 'crown_select') return t(view.role === 'observer' ? 'crown_select' : view.crownLocked[view.role] ? 'lockedWaiting' : 'select');
   if (view.phase === 'ended') return t('ended');
   if (pending) return t('movePending');
-  return view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : 'opponentThinking');
+  return view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : view.computer ? 'computerThinking' : 'opponentThinking');
 }
 function replayLabel() {
   if (replayPly === null) return t('livePosition');
@@ -325,6 +395,7 @@ function renderGame() {
   if (view.phase === 'playing') for (const color of ['w', 'b']) if (!view.connected[color]) page.append(node('div', 'banner', t('peerOffline', { color: colorName(color) })));
   const heading = node('div', 'game-heading'), title = node('div');
   title.append(node('div', 'room-label', `${t('room')} ${roomId}`), node('h1', '', statusText()));
+  if (view.computer) title.append(node('div', 'small', `${t('playComputer')} · ${t(`difficulty_${view.computer.difficulty}`)}`));
   heading.append(title, node('div', 'small', view.role === 'observer' ? t('observer') : t('youAre', { color: colorName(view.role) }))); page.append(heading);
   if (view.phase === 'ended' && view.result) page.append(resultPanel());
   const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div', 'game-board');
@@ -348,6 +419,8 @@ function render() {
   createButton.hidden = Boolean(roomId) || adminWatch;
   createButton.disabled = creating || joining;
   withIcon(createButton, t(creating ? 'creating' : 'create'), 'plus');
+  withIcon(document.querySelector('#show-rules'), t('rules'), 'book');
+  if (document.querySelector('#rules-dialog').open) renderRulesDialog();
   renderConfirmation();
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; withIcon(languageButton, language === 'en' ? '中文' : 'EN', 'language');
   document.querySelector('#promotion-title').textContent = t('selectPromotion'); withIcon(document.querySelector('#promotion-cancel'), t('cancel'), 'close');
@@ -359,6 +432,8 @@ function render() {
     login.href = `/admin?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
     withIcon(login, t('adminLogin'), 'lock'); panel.append(login); app.replaceChildren(panel); return;
   }
+  if (createPage) { renderCreate(); return; }
+  if (rulesPage) { renderRulesPage(); return; }
   if (!roomId) { renderHome(); return; }
   if (!view) {
     const panel = node('section', 'panel home'); panel.append(node('h1', '', 'Hidden Crown'), node('p', '', t(token || adminWatch ? connection : 'missingToken')));
@@ -401,7 +476,7 @@ languageButton.addEventListener('click', () => {
   if (promotionMoves && document.querySelector('#promotion').open) {
     document.querySelector('#promotion').close(); openPromotion(promotionMoves);
   }
-  const message = document.querySelector('#notice'); if (noticeKey && !message.hidden) message.textContent = t(noticeKey);
+  const message = document.querySelector('#notice'); if (noticeKey && !message.hidden) message.textContent = t(noticeKey, noticeValues);
 });
 function updateTimer() {
   const timer = document.querySelector('#think-timer'); if (!timer || !view) return;
@@ -501,3 +576,6 @@ async function connect() {
   ws.onerror = () => { /* onclose owns reconnect and visible feedback. */ };
 }
 render(); if (roomId && (token || adminWatch)) connect();
+if (!roomId && !adminWatch) fetch('/api/rules').then(response => response.ok ? response.json() : null).then(data => {
+  computerAvailable = !!data?.computer; capabilitiesLoaded = true; render();
+}).catch(() => { capabilitiesLoaded = true; render(); });

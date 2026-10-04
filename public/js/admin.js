@@ -13,7 +13,7 @@ function returnToWatch() {
   return null;
 }
 let csrf = null, page = 1, data = null, error = '', busy = false, confirmAction = null;
-let loading = false, settings = null, waitingDraft = null, updatedAt = null, saving = false, settingsMessage = '';
+let loading = false, settings = null, network = null, waitingDraft = null, updatedAt = null, saving = false, settingsMessage = '';
 
 const errors = { invalid_login: 'invalidLogin', admin_required: 'loginRequired', csrf_failed: 'csrfFailed', rate_limited: 'rateLimited', room_not_found: 'roomMissing', server_busy: 'serverBusy' };
 function displayMessage(value) { return value?.translationKey ? t(value.translationKey) : value?.message ?? String(value || ''); }
@@ -35,6 +35,7 @@ async function playerLinks(id) {
     const links = await api(`/api/admin/rooms/${id}/links`), content = document.querySelector('#admin-links-content');
     content.replaceChildren(); document.querySelector('#admin-links-title').textContent = t('playerLinksTitle', { id });
     for (const [role, label] of [['white', t('white')], ['black', t('black')]]) {
+      if (!links[role]) continue;
       const row = el('div', undefined, 'admin-link-row'), input = el('input'); input.readOnly = true;
       input.value = new URL(links[role], location.origin).href; input.setAttribute('aria-label', t(role === 'white' ? 'whiteLink' : 'blackLink'));
       input.addEventListener('focus', () => input.select());
@@ -67,6 +68,15 @@ function settingsPanel() {
   });
   panel.append(form, el('p', t('waitingHelp'), 'small'));
   if (settingsMessage) { const message = el('p', displayMessage(settingsMessage), 'small'); message.setAttribute('role', 'status'); panel.append(message); }
+  return panel;
+}
+function networkPanel() {
+  const panel = el('section', undefined, 'panel'); panel.append(el('h2', t('networkTitle')));
+  if (network) {
+    panel.append(el('p', t('networkAddresses', { peer: network.peerIp, client: network.clientIp }), 'small'));
+    const key = network.forwardedAccepted ? 'networkAccepted' : network.forwardedHeaderPresent ? network.proxyTrusted ? 'networkInvalid' : 'networkUntrusted' : 'networkMissing';
+    panel.append(el('p', t(key, { peer: network.peerIp }), 'small'));
+  }
   return panel;
 }
 function renderLogin() {
@@ -131,8 +141,10 @@ function render() {
   for (const text of ['roomNumber', 'createdAt', 'phase', 'ply', 'presence', 'actions']) row.append(el('th', t(text))); head.append(row); table.append(head);
   const body = el('tbody');
   for (const room of data?.rooms ?? []) {
+    const roomCell = el('td', room.id, 'notation');
+    if (room.computer_color) roomCell.append(el('div', `${t('computer')} · ${t(room.computer_difficulty)}`, 'small'));
     const phase = el('td', t(room.phase)); if (room.waitingExpiresAt) phase.append(el('div', t('expiresAt', { time: new Date(room.waitingExpiresAt).toLocaleTimeString(language === 'en' ? 'en-US' : 'zh-CN') }), 'small'));
-    const row = el('tr'); row.append(el('td', room.id, 'notation'), el('td', new Date(room.created_at).toLocaleString(language === 'en' ? 'en-US' : 'zh-CN')), phase, el('td', String(room.ply)), el('td', t('presenceText', { white: t(room.connected.w ? 'online' : 'offline'), black: t(room.connected.b ? 'online' : 'offline') })));
+    const row = el('tr'); row.append(roomCell, el('td', new Date(room.created_at).toLocaleString(language === 'en' ? 'en-US' : 'zh-CN')), phase, el('td', String(room.ply)), el('td', t('presenceText', { white: t(room.connected.w ? 'online' : 'offline'), black: t(room.connected.b ? 'online' : 'offline') })));
     const cell = el('td'), actions = el('div', undefined, 'actions');
     const watch = el('a', t('godView'), 'open-link'); watch.href = `/admin/watch?room=${room.id}`; watch.target = '_blank'; watch.rel = 'noopener noreferrer'; actions.append(watch);
     withIcon(watch, t('godView'), 'eye');
@@ -145,7 +157,7 @@ function render() {
   table.append(body); scroll.append(table); panel.append(scroll);
   if (!data?.rooms.length) panel.append(el('p', t('noGames'), 'empty-moves'));
   const pages = el('div', undefined, 'actions admin-pages'); pages.append(btn('previous', () => { page--; load(); }, '', page <= 1 || busy || loading), btn('next', () => { page++; load(); }, '', page * 50 >= (data?.total ?? 0) || busy || loading)); panel.append(pages);
-  root.replaceChildren(top, warning, settingsPanel(), panel);
+  root.replaceChildren(top, warning, settingsPanel(), networkPanel(), panel);
   scroll.scrollLeft = scrollLeft; scroll.scrollTop = scrollTop;
   if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
 }
@@ -153,10 +165,10 @@ async function load(silent = false) {
   if (loading) return;
   loading = true; if (!silent) render();
   try {
-    const [rooms, config] = await Promise.all([api(`/api/admin/rooms?page=${page}`), api('/api/admin/settings')]);
+    const [rooms, config, addresses] = await Promise.all([api(`/api/admin/rooms?page=${page}`), api('/api/admin/settings'), api('/api/admin/network')]);
     const lastPage = Math.max(1, Math.ceil(rooms.total / rooms.pageSize));
     if (page > lastPage) { page = lastPage; data = await api(`/api/admin/rooms?page=${page}`); } else data = rooms;
-    settings = config; updatedAt = new Date(); error = '';
+    settings = config; network = addresses; updatedAt = new Date(); error = '';
   } catch (e) { error = e.name === 'TimeoutError' ? { translationKey: 'timeout' } : e; }
   finally { loading = false; render(); }
 }

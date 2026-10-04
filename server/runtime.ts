@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
+import { isCrownCandidate } from '../src/computer/engine';
+import { ComputerPool } from './computer-pool';
 import { WebSocket } from 'ws';
 import { RoomCore, type RoomContext, type RoomSocket, type Attachment } from '../src/room-core';
 import type { RoomPersistence } from '../src/persistence';
@@ -21,11 +23,13 @@ export class RuntimeRoom implements RoomContext {
   private queue: Promise<unknown> = Promise.resolve();
   private queued = 0;
   alarmTimer?: NodeJS.Timeout;
+  computerTimer?: NodeJS.Timeout;
+  private computing = false;
   lastAccess = Date.now();
   bytes = 0;
   deleting = false;
   persistence: RoomPersistence;
-  constructor(readonly id: string, store: Store, manager: RoomManager) {
+  constructor(readonly id: string, store: Store, private manager: RoomManager) {
     this.persistence = {
       load: async () => {
         const saved = await store.load(id);
@@ -40,6 +44,40 @@ export class RuntimeRoom implements RoomContext {
       }
     };
     this.core = new RoomCore(this);
+  }
+  onStateChanged() { this.scheduleComputer(); }
+  scheduleComputer() {
+    clearTimeout(this.computerTimer);
+    if (this.computing || this.deleting || this.manager.closing || this.manager.rooms.get(this.id) !== this) return;
+    const turn = this.core.computerTurn(); if (!turn) return;
+    this.computerTimer = setTimeout(() => { void this.runComputer(); }, turn.phase === 'crown_select' ? 250 : 450);
+    this.computerTimer.unref();
+  }
+  private async runComputer() {
+    const turn = this.core.computerTurn();
+    if (!turn || this.computing || this.deleting || this.manager.closing) return;
+    this.computing = true; let failed = false;
+    try {
+      let command;
+      if (turn.phase === 'crown_select') {
+        const choices = Object.values(turn.input.pieces).filter(p => p.color === turn.computer.color && isCrownCandidate(p));
+        command = { type: 'select_crown' as const, pieceId: choices[randomInt(choices.length)].id };
+      } else if (turn.drawOffer && turn.drawOffer !== turn.computer.color) {
+        // Clear policy independent of hidden choices: the computer declines offers.
+        command = { type: 'respond_draw' as const, accept: false };
+      } else {
+        const result = await this.manager.computers.search(turn.input);
+        if (!result.move) return;
+        command = { type: 'move' as const, from: result.move.from, to: result.move.to, ...(result.move.promotion ? { promotion: result.move.promotion } : {}) };
+      }
+      if (!this.deleting && !this.manager.closing && this.manager.rooms.get(this.id) === this) await this.core.computerAction(command, turn.revision);
+    } catch { failed = true; }
+    finally {
+      this.computing = false;
+      if (failed && !this.deleting && !this.manager.closing) {
+        this.computerTimer = setTimeout(() => this.scheduleComputer(), 1000); this.computerTimer.unref();
+      } else this.scheduleComputer();
+    }
   }
   async setAlarm(at: number) {
     clearTimeout(this.alarmTimer);
@@ -59,10 +97,12 @@ export class RuntimeRoom implements RoomContext {
 // A replaceable directory/owner boundary for a future distributed room service.
 // Today one process owns all live rooms; PG startup enforces that ownership.
 export class RoomManager {
+  closing = false;
+  readonly computers: ComputerPool;
   readonly rooms = new Map<string, RuntimeRoom>();
   private loading = new Map<string, Promise<RuntimeRoom>>();
   private expiryTask: Promise<void> | null = null;
-  constructor(readonly store: Store, private config: Configuration, readonly waitingMinutes: () => number) {}
+  constructor(readonly store: Store, private config: Configuration, readonly waitingMinutes: () => number) { this.computers = new ComputerPool(config.computerWorkers); }
   async get(id: string): Promise<RuntimeRoom> {
     const loading = this.loading.get(id); if (loading) return loading;
     const existing = this.rooms.get(id); if (existing) { existing.lastAccess = Date.now(); await existing.core.ready; return existing; }
@@ -78,14 +118,14 @@ export class RoomManager {
   }
   private evictIdle(count: number) {
     const idle = [...this.rooms.values()].filter(room => !room.sockets.size && !room.busy).sort((a, b) => a.lastAccess - b.lastAccess);
-    for (const room of idle.slice(0, count)) { clearTimeout(room.alarmTimer); this.rooms.delete(room.id); }
+    for (const room of idle.slice(0, count)) { clearTimeout(room.alarmTimer); clearTimeout(room.computerTimer); this.rooms.delete(room.id); }
   }
   ensureBudget(id: string, incoming: number) {
     let total = incoming;
     for (const [key, room] of this.rooms) if (key !== id) total += room.bytes;
     if (total > this.config.maxCacheBytes) {
       const idle = [...this.rooms.values()].filter(room => room.id !== id && !room.sockets.size && !room.busy).sort((a, b) => a.lastAccess - b.lastAccess);
-      for (const room of idle) { total -= room.bytes; clearTimeout(room.alarmTimer); this.rooms.delete(room.id); if (total <= this.config.maxCacheBytes) break; }
+      for (const room of idle) { total -= room.bytes; clearTimeout(room.alarmTimer); clearTimeout(room.computerTimer); this.rooms.delete(room.id); if (total <= this.config.maxCacheBytes) break; }
       if (total > this.config.maxCacheBytes) throw new Error('server_busy');
     }
   }
@@ -97,7 +137,7 @@ export class RoomManager {
       if (room) {
         room.deleting = true;
         for (const socket of room.sockets) { socket.serializeAttachment({ ...socket.deserializeAttachment()!, active: false }); socket.ws.close(4001, expired ? 'room_expired' : 'room_deleted'); }
-        clearTimeout(room.alarmTimer); this.rooms.delete(id);
+        clearTimeout(room.alarmTimer); clearTimeout(room.computerTimer); this.rooms.delete(id);
       }
     };
     if (room) await room.blockConcurrencyWhile(remove); else await remove();
@@ -109,5 +149,9 @@ export class RoomManager {
       for (const id of rows) await this.remove(id, true);
     })().finally(() => { this.expiryTask = null; }); return this.expiryTask;
   }
-  async close() { for (const room of this.rooms.values()) clearTimeout(room.alarmTimer); await Promise.all([...this.rooms.values()].map(room => room.drain())); }
+  async close() {
+    this.closing = true;
+    for (const room of this.rooms.values()) { clearTimeout(room.alarmTimer); clearTimeout(room.computerTimer); }
+    await this.computers.close(); await Promise.all([...this.rooms.values()].map(room => room.drain()));
+  }
 }

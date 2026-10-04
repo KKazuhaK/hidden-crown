@@ -2,6 +2,12 @@ import { language } from './i18n.js';
 
 const strings = {
   en: {
+    computer: 'Computer', easy: 'Easy', medium: 'Medium', hard: 'Hard',
+    networkTitle: 'Reverse proxy diagnostics', networkAddresses: 'Proxy peer: {peer} · Client address: {client}',
+    networkAccepted: 'The trusted proxy supplied a valid client address. Check that Nginx replaces X-Forwarded-For with the actual visitor address.',
+    networkUntrusted: 'The forwarding header is ignored. If {peer} is your Nginx peer, set TRUSTED_PROXIES={peer} and recreate the container; users currently share this peer’s limits.',
+    networkInvalid: 'The trusted proxy supplied an invalid address or a list. Configure Nginx to replace X-Forwarded-For with a single visitor address.',
+    networkMissing: 'No forwarding header received. Direct connections use their peer address; if using Nginx, configure it to pass the actual visitor address.',
     admin: 'Admin', pageTitle: 'Hidden Crown · Admin', loginTitle: 'Administrator login', loginHelp: 'View all games and both crowns, end games, or delete their records.',
     username: 'Username', password: 'Password', login: 'Log in', loggingIn: 'Logging in…', logout: 'Log out', allGames: 'All games',
     refresh: 'Refresh list', refreshing: 'Refreshing…', confirmTitle: 'Confirm action', cancel: 'Cancel', confirm: 'Confirm', close: 'Close',
@@ -22,6 +28,12 @@ const strings = {
     rateLimited: 'Too many requests. Please try again later.', roomMissing: 'This room no longer exists.', serverBusy: 'The server is busy. Please try again.', requestFailed: 'The request failed. Please try again.', timeout: 'The request timed out. Please try again.'
   },
   zh: {
+    computer: '人机', easy: '简单', medium: '中等', hard: '困难',
+    networkTitle: '反向代理诊断', networkAddresses: '反代来源：{peer} · 客户端地址：{client}',
+    networkAccepted: '已接受受信反代传递的客户端地址。请确认 Nginx 覆盖 X-Forwarded-For，传递真实访客地址。',
+    networkUntrusted: '转发头被忽略。如果 {peer} 是你的 Nginx 来源，请设置 TRUSTED_PROXIES={peer} 并重建容器；当前访客会共用该来源的限额。',
+    networkInvalid: '受信反代传递的地址无效或包含多个地址。请让 Nginx 覆盖 X-Forwarded-For，仅传递一个真实访客地址。',
+    networkMissing: '没有收到转发头。直连时使用连接来源地址；如果经过 Nginx，请配置其传递真实访客地址。',
     admin: '管理员', pageTitle: 'Hidden Crown · 管理员', loginTitle: '管理员登录', loginHelp: '登录后可查看全部对局和双方王冠，也可结束对局、删除记录。',
     username: '管理员账号', password: '管理员密码', login: '登录', loggingIn: '正在登录…', logout: '退出登录', allGames: '全部对局',
     refresh: '刷新列表', refreshing: '刷新中…', confirmTitle: '确认操作', cancel: '取消', confirm: '确认', close: '关闭',

@@ -18,6 +18,7 @@ export default {
         const raw = await request.text();
         if (raw.length > 1024) throw new Error('bad_request');
         const value = raw ? JSON.parse(raw) : {};
+        if (value && typeof value === 'object' && 'computer' in value) return Response.json({ code: 'computer_unavailable' }, { status: 400 });
         if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'ruleset')) throw new Error('bad_request');
         ruleset = ruleRegistry.selection(value.ruleset);
       } catch { return Response.json({ code: 'invalid_ruleset' }, { status: 400 }); }
@@ -32,7 +33,7 @@ export default {
       }
       return new Response("Please retry", { status: 503 });
     }
-    if (url.pathname === '/api/rules' && request.method === 'GET') return Response.json({ rulesets: ruleRegistry.list() });
+    if (url.pathname === '/api/rules' && request.method === 'GET') return Response.json({ rulesets: ruleRegistry.list(), computer: false });
     const joinPath = /^\/api\/rooms\/([^/]+)\/join$/.exec(url.pathname);
     if (joinPath) {
       const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };

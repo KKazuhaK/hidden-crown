@@ -1,4 +1,4 @@
-# Hidden Crown 2.0：Docker Compose + Nginx
+# Hidden Crown 2.1：Docker Compose + Nginx
 
 Node.js 24 + WebSocket。留空 `DATABASE_URL` 使用 SQLite；填写 PostgreSQL URL 则连接现有 PostgreSQL 14+。Redis、MySQL 均不是依赖。源码仓库私有，GHCR 镜像和 [部署模板仓库](https://github.com/KKazuhaK/hidden-crown-deploy) 公开，可匿名拉取。
 
@@ -31,7 +31,7 @@ sudo nano .env
 PUBLIC_ORIGIN=https://chess.your-domain.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD='你自己的16至256字符管理员密码'
-HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.0.0
+HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.1.0
 HOST_PORT=8787
 DATABASE_URL='postgresql://hidden_crown:URL编码后的数据库密码@host.docker.internal:5432/hidden_crown'
 PG_POOL_MAX=10
@@ -104,6 +104,18 @@ sudo systemctl reload nginx
 
 代理片段覆盖 `X-Forwarded-For`。`TRUSTED_PROXIES` 填应用实际看到的 Nginx 来源 IP，精确地址、逗号分隔。宿主 Nginx 常从 Compose 网关连接，可用 `docker network inspect <项目名>_default` 核对。留空会忽略转发头，所有代理后的玩家会共享该代理的 IP 限额，因此正式开放前必须正确设置。不要信任任意地址，也不要保留客户端提供的不可信转发链。
 
+2.1 后台提供“反向代理诊断”，显示本次管理员请求的连接来源、解析后的客户端地址和转发头是否被接受。只对已登录管理员开放，不公开其他访客信息。Nginx 应使用 `proxy_set_header X-Forwarded-For $remote_addr;`，不要使用 `$proxy_add_x_forwarded_for`；应用收到多个地址会忽略转发头。
+
+设置 `.env` 后执行 `docker compose up -d --force-recreate`，仅 `restart` 不会重新读取环境变量。可在部署目录运行以下只读命令查看候选 Docker 网关；多网络时需与后台显示的来源对照，而非全部加入信任列表：
+
+```bash
+cd /opt/hidden-crown
+container_id=$(docker compose ps -q hidden-crown)
+docker inspect "$container_id" --format '{{range .NetworkSettings.Networks}}network={{.NetworkID}} gateway={{.Gateway}}{{println}}{{end}}'
+```
+
+如果域名启用了 Cloudflare 代理，还要先在 Nginx 使用真实 IP 模块，只信任 Cloudflare 官方出口网段，通过 `CF-Connecting-IP` 恢复访客地址，然后再传递 `$remote_addr`。否则应用可能按 Cloudflare 节点限流。参见 [Nginx realip](https://nginx.org/en/docs/http/ngx_http_realip_module.html) 和 [Cloudflare 恢复访客 IP](https://developers.cloudflare.com/support/troubleshooting/restoring-visitor-ips/restoring-original-visitor-ips/)。应用的 `TRUSTED_PROXIES` 仍填直接连接应用的 Nginx 来源。
+
 ## 可调容量和防护
 
 | 配置 | 默认值 | 含义 |
@@ -120,6 +132,8 @@ sudo systemctl reload nginx
 | `MAX_STORED_BYTES` | 768 MiB | 保存对局数据达到此值时拒绝创建新房间；已有对局可继续增长至单房间上限 |
 | `MAX_DATABASE_BYTES` | 1 GiB | SQLite 主库页空间上限，另留 WAL 余量；不限制 PostgreSQL 物理大小 |
 | `PG_POOL_MAX` | 10 | PostgreSQL 连接池总数，包括 1 个实例所有权连接 |
+| `COMPUTER_WORKERS` | 2 | 人机搜索的共享线程数，允许 1–4；结合 CPU 预算调整 |
+| `MAX_COMPUTER_ROOMS` | 50 | 未结束人机房间上限，仍受全局房间及缓存上限约束 |
 
 限流、载入房间、每房间队列、每连接输入队列、消息大小、慢客户端发送缓冲均有界。空闲房间按最近使用顺序从缓存移出，不移除在线或处理中房间。管理员可以从 `/api/admin/metrics` 查看后端、房间数量、连接、内存和事件循环延迟，不会返回王冠或凭证。
 

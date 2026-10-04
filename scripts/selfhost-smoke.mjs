@@ -190,7 +190,10 @@ try {
   const limits = await start(8792, { CREATE_LIMIT_PER_IP: '2', CREATE_LIMIT_GLOBAL: '100', MAX_ROOMS: '100' });
   equal((await request(limits.base, '/api/rooms', 'POST')).status, 201);
   equal((await request(limits.base, '/api/rooms', 'POST')).status, 201);
-  equal((await request(limits.base, '/api/rooms', 'POST')).status, 429);
+  const throttled = await request(limits.base, '/api/rooms', 'POST');
+  equal(throttled.status, 429); equal(throttled.data.scope, 'create_ip');
+  check(throttled.data.retryAfter > 0 && throttled.data.retryAfter <= 300);
+  equal(throttled.headers.get('retry-after'), String(throttled.data.retryAfter));
   equal((await request(limits.base, '/api/rooms', 'POST', undefined, { 'X-Forwarded-For': '1.2.3.4' })).status, 429);
   equal((await request(limits.base, '/api/rooms', 'POST', undefined, { Origin: 'https://attacker.invalid' })).status, 403);
   for (let i = 0; i < 5; i++) equal((await request(limits.base, '/api/admin/login', 'POST', { username, password: 'wrong' })).status, 401);

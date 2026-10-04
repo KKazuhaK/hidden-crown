@@ -75,7 +75,7 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect((await store.load(game.roomId))!.state.revision).toBe(1);
   });
   it('applies schema migrations once and persists settings and sessions', async () => {
-    await store.initialize(); expect(await database.query('SELECT * FROM hc_schema_migrations')).toHaveLength(1);
+    await store.initialize(); expect(await database.query('SELECT * FROM hc_schema_migrations')).toHaveLength(2);
     await store.setMetadata('waiting_minutes', '15'); expect(await store.metadata('waiting_minutes')).toBe('15');
     await store.addSession('hash', 'csrf', Date.now() + 10000); expect((await store.session('hash'))?.csrf).toBe('csrf');
     await store.deleteSession('hash'); expect(await store.session('hash')).toBeNull();
@@ -87,5 +87,14 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect(await store.commit(short, [event('wK')], 0)).toBe(await store.commit(long, [event('wRh')], 0));
     expect((await store.load(long.roomId))!.state.crowns.w).toBe('wRh');
     expect((await store.load(short.roomId))!.events[0].data?.pieceId).toBe('wK');
+  });
+  it('persists immutable computer seats and counts only unfinished computer games', async () => {
+    const g = initial('COMPUTER'); g.computer = { color: 'b', difficulty: 'hard' };
+    await store.commit(g, [], 0); expect(await store.computerCount()).toBe(1);
+    expect((await store.load(g.roomId))!.state.computer).toEqual(g.computer);
+    expect((await store.header(g.roomId))!.computer_color).toBe('b');
+    await expect(store.commit({ ...g, revision: 2, computer: { color: 'w', difficulty: 'hard' } }, [], 1)).rejects.toThrow('room_computer_immutable');
+    await store.commit({ ...g, revision: 2, phase: 'ended', result: { winner: null, reason: 'admin' } }, [], 1);
+    expect(await store.computerCount()).toBe(0); await store.delete(g.roomId);
   });
 });

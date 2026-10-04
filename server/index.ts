@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, randomInt, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
+import { computerRequest, difficulties } from '../src/computer/config';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -13,8 +14,8 @@ import { ruleRegistry } from '../src/rules/registry';
 import { promisify } from 'node:util';
 import { scrypt } from 'node:crypto';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { Limiter, clientIp } from './security';
-import { linksFor, viewFor } from '../src/protocol';
+import { Limiter, clientIp, proxyInfo } from './security';
+import { playerLinksFor, viewFor } from '../src/protocol';
 
 async function main() {
 const config = configuration();
@@ -60,6 +61,10 @@ function serializeAdmission<T>(callback: () => Promise<T>): Promise<T> {
 function json(res: ServerResponse, status: number, data: unknown, extra: Record<string, string> = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra }); res.end(JSON.stringify(data));
 }
+function limited(res: ServerResponse, limiter: Limiter, key: string, scope: string) {
+  const retryAfter = limiter.retryAfter(key);
+  return json(res, 429, { code: 'rate_limited', scope, retryAfter }, { 'Retry-After': String(retryAfter) });
+}
 async function body(req: IncomingMessage, maximum = 4096) {
   const chunks: Buffer[] = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > maximum) throw new Error('body_too_large'); chunks.push(chunk); }
@@ -92,10 +97,11 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', origin), path = url.pathname;
     if (req.headers.host !== new URL(origin).host) return json(res, 403, { code: 'host_denied' });
     const ip = clientIp(req, proxies);
-    if (!requests.take(ip) || !globalRequests.take('all')) return json(res, 429, { code: 'rate_limited' }, { 'Retry-After': '60' });
+    if (!requests.take(ip)) return limited(res, requests, ip, 'requests');
+    if (!globalRequests.take('all')) return limited(res, globalRequests, 'all', 'requests_global');
     if (!sameOrigin(req)) return json(res, 403, { code: 'origin_denied' });
     if (path === '/healthz' && req.method === 'GET') { await store.health(); return json(res, 200, { ok: true }); }
-    if (path === '/api/rules' && req.method === 'GET') return json(res, 200, { rulesets: ruleRegistry.list() });
+    if (path === '/api/rules' && req.method === 'GET') return json(res, 200, { rulesets: ruleRegistry.list(), computer: { difficulties } });
     if (path === '/api/admin/login') {
       if (req.method !== 'POST') return json(res, 405, { code: 'bad_request' }, { Allow: 'POST' });
       if (!loginAttempts.take(ip) || !globalLogins.take('all')) return json(res, 429, { code: 'rate_limited' }, { 'Retry-After': '900' });
@@ -113,11 +119,12 @@ const server = createServer(async (req, res) => {
       const auth = await session(req); if (!auth) return json(res, 401, { code: 'admin_required' });
       if (req.method !== 'GET' && (req.headers.origin !== origin || req.headers['x-csrf-token'] !== auth.csrf)) return json(res, 403, { code: 'csrf_failed' });
       if (path === '/api/admin/session' && req.method === 'GET') return json(res, 200, { csrf: auth.csrf });
+      if (path === '/api/admin/network' && req.method === 'GET') return json(res, 200, proxyInfo(req, proxies));
       if (path === '/api/admin/metrics' && req.method === 'GET') return json(res, 200, {
         database: database.kind, usage: await store.usage(), loadedRooms: runtimeRooms.size,
         connections: wss.clients.size, memoryRssBytes: process.memoryUsage().rss,
         eventLoopP95Ms: Math.round(eventLoop.percentile(95) / 10000) / 100,
-        limits: { rooms: config.maxRooms, activeRooms: config.maxActiveRooms, loadedRooms: config.maxLoadedRooms, connections: config.maxConnections, cacheBytes: config.maxCacheBytes, storedBytes: config.maxStoredBytes }
+        limits: { rooms: config.maxRooms, activeRooms: config.maxActiveRooms, computerRooms: config.maxComputerRooms, computerWorkers: config.computerWorkers, loadedRooms: config.maxLoadedRooms, connections: config.maxConnections, cacheBytes: config.maxCacheBytes, storedBytes: config.maxStoredBytes }
       });
       if (path === '/api/admin/settings') {
         if (req.method === 'GET') return json(res, 200, { waitingMinutes: waitingMinutes() });
@@ -140,7 +147,7 @@ const server = createServer(async (req, res) => {
         await expireWaitingRooms();
         const page = Math.max(1, Math.min(100000, Number(url.searchParams.get('page')) || 1));
         const rows = await store.list(Math.floor(page));
-        return json(res, 200, { rooms: rows.map(row => ({ ...row, waitingExpiresAt: ['lobby', 'crown_select'].includes(String(row.phase)) ? Number(row.created_at) + waitingMinutes() * 60000 : null, connected: runtimeRooms.get(String(row.id))?.core.adminSnapshot()?.view.connected ?? { w: false, b: false } })), total: await store.count(), page: Math.floor(page), pageSize: 50 });
+        return json(res, 200, { rooms: rows.map(row => ({ ...row, waitingExpiresAt: ['lobby', 'crown_select'].includes(String(row.phase)) ? Number(row.created_at) + waitingMinutes() * 60000 : null, connected: runtimeRooms.get(String(row.id))?.core.adminSnapshot()?.view.connected ?? { w: row.computer_color === 'w', b: row.computer_color === 'b' } })), total: await store.count(), page: Math.floor(page), pageSize: 50 });
       }
       const adminRoute = /^\/api\/admin\/rooms\/([A-Z2-9]{8})(?:\/(end|log|links))?$/.exec(path);
       if (adminRoute && pattern.test(adminRoute[1])) {
@@ -154,8 +161,8 @@ const server = createServer(async (req, res) => {
           return json(res, 200, { ok: true });
         }
         if (req.method === 'GET' && adminRoute[2] === 'links') {
-          const state = (await store.load(id))!.state, links = linksFor(state);
-          return json(res, 200, { white: links.white, black: links.black });
+          const state = (await store.load(id))!.state;
+          return json(res, 200, playerLinksFor(state));
         }
         if (req.method === 'GET' && adminRoute[2] === 'log') {
           const room = runtimeRooms.get(id);
@@ -174,15 +181,18 @@ const server = createServer(async (req, res) => {
     }
     if (path === '/api/rooms') {
       if (req.method !== 'POST') return json(res, 405, { code: 'bad_request' }, { Allow: 'POST' });
-      if (!creates.take(ip) || !globalCreates.take('all')) return json(res, 429, { code: 'rate_limited' }, { 'Retry-After': '600' });
-      const value = await body(req, 1024); if (Object.keys(value).some(key => key !== 'ruleset')) return json(res, 400, { code: 'bad_request' });
+      if (!creates.take(ip)) return limited(res, creates, ip, 'create_ip');
+      if (!globalCreates.take('all')) return limited(res, globalCreates, 'all', 'create_global');
+      const value = await body(req, 1024); if (Object.keys(value).some(key => !['ruleset', 'computer'].includes(key))) return json(res, 400, { code: 'bad_request' });
       const ruleset = ruleRegistry.selection(value.ruleset);
+      const computer = 'computer' in value ? computerRequest(value.computer, ruleset, () => randomInt(2)) : undefined;
       return await serializeAdmission(async () => {
         await expireWaitingRooms();
         const usage = await store.usage();
         if (usage.rooms >= maxRooms || usage.active >= config.maxActiveRooms || usage.bytes >= config.maxStoredBytes) return json(res, 503, { code: 'room_limit' });
+        if (computer && await store.computerCount() >= config.maxComputerRooms) return json(res, 503, { code: 'computer_limit' });
         let id: string; do { id = [...randomBytes(8)].map(byte => alphabet[byte % 32]).join(''); } while (await store.header(id));
-        const response = await (await getRoom(id)).core.fetch(new Request('http://room/init', { method: 'POST', body: JSON.stringify({ roomId: id, ruleset, tokens: { w: randomUUID(), b: randomUUID(), observer: randomUUID() } }) }));
+        const response = await (await getRoom(id)).core.fetch(new Request('http://room/init', { method: 'POST', body: JSON.stringify({ roomId: id, ruleset, computer, tokens: { w: randomUUID(), b: randomUUID(), observer: randomUUID() } }) }));
         return json(res, 201, await response.json());
       });
     }
@@ -205,13 +215,13 @@ const server = createServer(async (req, res) => {
     }
     if (path.startsWith('/api/') || path.startsWith('/ws/')) return json(res, 404, { code: 'not_found' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { code: 'bad_request' });
-    const asset = assets.get(path === '/admin/watch' ? '/' : path === '/admin/' ? '/admin' : path);
+    const asset = assets.get(['/admin/watch', '/create', '/rules'].includes(path) ? '/' : path === '/admin/' ? '/admin' : path);
     if (!asset) return json(res, 404, { code: 'not_found' });
     res.writeHead(200, { 'Content-Type': `${asset.type}; charset=utf-8`, 'Cache-Control': 'no-cache' }); res.end(req.method === 'HEAD' ? undefined : asset.content);
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    const bad = ['body_too_large', 'bad_request', 'invalid_ruleset', 'unsupported_ruleset'].includes(message) || error instanceof SyntaxError;
-    if (!res.headersSent) json(res, bad ? 400 : 503, { code: bad ? (message.endsWith('ruleset') ? message : 'bad_request') : 'server_busy' });
+    const bad = ['body_too_large', 'bad_request', 'invalid_ruleset', 'unsupported_ruleset', 'invalid_computer', 'computer_unavailable'].includes(message) || error instanceof SyntaxError;
+    if (!res.headersSent) json(res, bad ? 400 : 503, { code: bad ? (['invalid_ruleset', 'unsupported_ruleset', 'invalid_computer', 'computer_unavailable'].includes(message) ? message : 'bad_request') : 'server_busy' });
     else res.end();
     // Deliberately omit request bodies, token URLs and state from operational logs.
     if (!bad) console.error('Request failed');
