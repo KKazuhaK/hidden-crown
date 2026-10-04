@@ -43,7 +43,7 @@ The first source commit, `8bd7e39a3f773b07eba1752fe7913e62eb2aceaa`, passed [Git
 
 ## Remaining deployment checks
 
-The user's private GitHub repository is `KKazuhaK/hidden-crown`. A GHCR image release and remote application deployment have not run.
+The user's private GitHub repository is `KKazuhaK/hidden-crown`. The first GHCR release is now complete (see the Compose release checks below). Deployment on the user's server remains unverified.
 
 The self-hosted server is tested locally. Production HTTPS, the user's server configuration, different-network play, real phone hardware and the researcher-run recorded session remain unverified. The retained Cloudflare adapter has a separate preview runtime and does not provide the Node administrator/global admission layer; existing Cloudflare data is not automatically migrated into SQLite.
 
@@ -54,6 +54,13 @@ The self-hosted server is tested locally. Production HTTPS, the user's server co
 - Actual browser checks: slider keyboard traversal, clickable notation, restored captured pawn, disabled game controls while viewing history, Return to live, and exactly one crown badge for a player in an unfinished game. An independent two-player game received a new capture while replay stayed at ply zero; the slider maximum advanced to three and Return to live displayed the latest capture.
 - Admin checks: manual refresh updates its timestamp, persisted timeout save shows success, White link copying matches the input value, buttons read “删除”, and confirmation actions have computed alignment `flex-end`; the deletion dialog was canceled. Console warnings/errors were empty.
 - At an actual 390-pixel browser viewport the replay page document width was 375 pixels, without horizontal overflow. Temporary viewport overrides were reset. Local proof screenshot: ignored `test-artifacts/replay-timeline.png`.
-- The updated local Node preview remains available on port 8790. These changes have not yet been pushed to GitHub or published as a Docker image.
+- The updated local Node preview remains available on port 8790. These changes are included in source commit `a99a41d` and Docker release `v1.0.0`.
 
 Administrator authorization follow-up: 82 self-hosted assertions passed. An isolated localhost browser check showed a specific authorization alert and login button without starting a WebSocket when signed out. Signing in returned to the original watch URL. Logging out from a second tab removed the watch board and displayed the expired-session alert, without reconnecting. Screenshot: ignored `test-artifacts/admin-authorization-required.png`. Return URLs are restricted to same-origin `/admin/watch` with a valid room number.
+
+## Compose release checks — October 4, 2026
+
+- Source commit `a99a41dc7e79aea72c4f61425dac5121c69a506b` passed [main CI](https://github.com/KKazuhaK/hidden-crown/actions/runs/37188169350) and [Release CI](https://github.com/KKazuhaK/hidden-crown/actions/runs/37188172528). Both native architectures passed type checks, 36 unit tests, 82 integration assertions, actual Docker games/joins, volume restart persistence, Nginx syntax, and Compose startup with environment-configured administrator login.
+- [v1.0.0](https://github.com/KKazuhaK/hidden-crown/releases/tag/v1.0.0) publishes `ghcr.io/kkazuhak/hidden-crown:1.0.0`, `latest` and `beta`, plus the configuration-only `hidden-crown-compose.zip`. The ZIP was downloaded from the actual release and inspected: version 1.0.0 selected, administrator password blank, optional secrets configuration and Nginx files included.
+- The user authorized public image access. GitHub's package settings confirm Public while the source repository remains private. All three registry manifests were read with an anonymous registry bearer token, without GitHub credentials; they contain Linux AMD64/ARM64 and their attestations. Manifest digest: `sha256:e09b5902cf9e09f198f89ee835ef7dc9bce3a8e55d2a9d7afcf265894912b71a`.
+- Screenshot: ignored `test-artifacts/public-container-package.png`. No deployment on the user's production server has been performed.
