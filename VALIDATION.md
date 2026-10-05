@@ -162,3 +162,8 @@ The new SQLite HTTP/WebSocket runtime passes 62 assertions: friend startup witho
 
 - Finished player views now offer New game and Back to home in both languages. Computer games create a new room directly with the same rules, difficulty and human side. Friend games create a new room and show its private player links. Creation errors remain visible with a retryable button. Observers receive no new-game control.
 - JavaScript syntax/build checks passed. Browser verified Standard chess / Hard / human Black survives a new computer game, and a completed standard friend game opens a distinct new room with the correct mode and invitation links. Old results remain viewable.
+
+## 2.4.3 completed-game header layout
+
+- Completed player actions now appear at the upper right aligned with the Game over heading, with contextual help and creation errors below them. Mobile/tablet layouts stack the controls below the title.
+- Browser verified title/action vertical centers within 0.01 CSS px on desktop, and no horizontal overflow at 390 px in both languages. JavaScript syntax check passed.

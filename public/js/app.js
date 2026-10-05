@@ -356,19 +356,19 @@ function resultPanel() {
     card.append(graphic, description); cards.append(card);
   }
   panel.append(cards);
-  if (player) {
-    const actions = node('div', 'actions result-actions');
-    actions.append(button(t(creating ? 'creating' : 'newGame'), () => createRoom({
-      ruleset: { ...view.ruleset, version: view.ruleset.id === 'hidden-crown' ? 4 : view.ruleset.version },
-      ...(view.computer ? { computer: { humanColor: view.role, difficulty: view.computer.difficulty } } : {})
-    }), 'primary', creating, 'plus'));
-    actions.append(button(t('backHome'), () => location.assign('/'), '', creating, 'back'));
-    panel.append(actions, node('p', 'small', t(view.computer ? 'newGameComputerHelp' : 'newGameFriendsHelp')));
-    if (creationError) {
-      const error = node('p', 'join-error', t(creationError.key, creationError.values)); error.setAttribute('role', 'alert'); panel.append(error);
-    }
-  }
   return panel;
+}
+function resultActions(heading) {
+  const actions = node('div', 'actions result-actions');
+  actions.append(button(t(creating ? 'creating' : 'newGame'), () => createRoom({
+    ruleset: { ...view.ruleset, version: view.ruleset.id === 'hidden-crown' ? 4 : view.ruleset.version },
+    ...(view.computer ? { computer: { humanColor: view.role, difficulty: view.computer.difficulty } } : {})
+  }), 'primary', creating, 'plus'));
+  actions.append(button(t('backHome'), () => location.assign('/'), '', creating, 'back'));
+  heading.append(actions, node('p', 'small result-help', t(view.computer ? 'newGameComputerHelp' : 'newGameFriendsHelp')));
+  if (creationError) {
+    const error = node('p', 'join-error result-create-error', t(creationError.key, creationError.values)); error.setAttribute('role', 'alert'); heading.append(error);
+  }
 }
 function observerPanel() {
   const panel = node('section', 'panel'), stats = node('div', 'observer-stats');
@@ -498,11 +498,14 @@ function renderGame() {
   if (view.role === 'observer') page.append(node('div', 'banner observer-banner', t('observerWarning')));
   if (connection !== 'connected') page.append(node('div', 'banner', t(connection)));
   if (view.phase === 'playing') for (const color of ['w', 'b']) if (!view.connected[color]) page.append(node('div', 'banner', t('peerOffline', { color: colorName(color) })));
-  const heading = node('div', 'game-heading'), title = node('div');
+  const endedPlayer = view.phase === 'ended' && view.role !== 'observer';
+  const heading = node('div', `game-heading${endedPlayer ? ' game-ended-heading' : ''}`), title = node('div', 'game-title');
   title.append(node('div', 'room-label', `${t('room')} ${roomId}`), node('h1', '', statusText()));
   title.append(node('div', 'small game-rules-label', modeName()));
   if (view.computer) title.append(node('div', 'small', `${t('playComputer')} · ${t(`difficulty_${view.computer.difficulty}`)}`));
-  heading.append(title, node('div', 'small', view.role === 'observer' ? t('observer') : t('youAre', { color: colorName(view.role) }))); page.append(heading);
+  heading.append(title, node('div', 'small game-player-role', view.role === 'observer' ? t('observer') : t('youAre', { color: colorName(view.role) })));
+  if (endedPlayer) resultActions(heading);
+  page.append(heading);
   if (view.phase === 'ended' && view.result) page.append(resultPanel());
   const layout = node('div', 'game-layout'), boardColumn = node('div', 'board-column'), boardContainer = node('div', 'game-board');
   const enabled = replayPly === null && connection === 'connected' && !pending && !lockPending && view.role !== 'observer' &&

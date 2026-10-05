@@ -94,6 +94,18 @@ h3 { font-size:14px; font-weight:600; }
 .open-link:hover { border-color:var(--accent); }
 .game-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:22px; }
 .game-heading h1 { font-size:34px; margin-bottom:6px; }
+.game-ended-heading { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,480px); gap:4px 24px; }
+.game-ended-heading .game-title { display:contents; }
+.game-ended-heading .game-title > *, .game-ended-heading .game-player-role { grid-column:1; }
+.game-ended-heading h1 { grid-row:2; margin:0; align-self:center; }
+.game-ended-heading .result-actions { grid-column:2; grid-row:2; justify-content:flex-end; align-self:center; }
+.game-ended-heading .result-help { grid-column:2; grid-row:3 / span 2; margin:0; text-align:right; }
+.game-ended-heading .result-create-error { grid-column:2; margin:0; text-align:right; }
+@media(max-width:850px) {
+  .game-ended-heading { grid-template-columns:minmax(0,1fr); gap:6px; }
+  .game-ended-heading .result-actions, .game-ended-heading .result-help, .game-ended-heading .result-create-error { grid-column:1; grid-row:auto; justify-content:flex-start; text-align:left; }
+  .game-ended-heading .result-actions { margin-top:8px; }
+}
 .room-label { font-size:12px; letter-spacing:1px; color:var(--muted); }
 .game-layout { display:grid; grid-template-columns:minmax(0,560px) minmax(270px,1fr); gap:28px; align-items:start; }
 .board-column { min-width:0; }
