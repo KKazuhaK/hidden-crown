@@ -44,15 +44,15 @@ The seven-ply smoke game: White crowns `wQ`, Black crowns `bBf`; play `e2-e4`, `
 
 ## King interrogation (2.3.1)
 
-New rooms use `hidden-crown@3`. Pick a crown from the seven original pieces: queen, two rooks, two bishops or two knights. The king cannot be crowned. Each side may spend two whole turns interrogating with its surviving king. Targets must be original enemy crown candidates on the same rank, file or diagonal; blockers do not matter. Pawns, kings, promoted pieces, captured pieces and targets already interrogated by that side are excluded. Capturing a king does not end the game, but removes that side's interrogation ability.
+New rooms use `hidden-crown@4`. Pick a crown from the seven original pieces: queen, two rooks, two bishops or two knights. The king cannot be crowned. Each side may spend two whole turns interrogating with its surviving king. Targets must be original enemy crown candidates on the same rank, file or diagonal; blockers do not matter. Pawns, kings, promoted pieces, captured pieces and targets already interrogated by that side are excluded. Capturing a king does not end the game, but removes that side's interrogation ability.
 
 An interrogation consumes a turn without moving or capturing. Only its actor receives the answer; opponents see the king and target, and authenticated administrator observers receive every answer. Identifying a crown does not win. Player state frames never contain the opponent’s interrogation answers, even after the game ends. JSON/CSV administrator exports include action type, target ID/square, answer and thinking time. Notation identifies the king, for example `Ke2 ? bQ@e7`. Replays include interrogation turns without changing the board or castling rights. Known answers stay marked on the piece: × means not the crown, and a crown badge means confirmed. Marks follow movement, remain in captured-piece trays, survive reconnects and rewind with replay; the opponent cannot see your private marks.
 
-Interrogations expire en passant, clear draw offers and count as non-capture, non-pawn turns for the existing draw limit. No-action draws require that neither a move nor interrogation is available. Undo may withdraw ordinary moves after the latest interrogation, but cannot withdraw or cross an interrogation because knowledge cannot be revoked. Computer opponents use only their own interrogation results.
+Interrogations expire en passant, clear draw offers and count as non-capture, non-pawn turns for the existing draw limit. No-action draws require that neither a move nor interrogation is available. New rooms do not allow undo because captures reveal whether the captured piece is the crown. Computer opponents use only their own interrogation results.
 
 Existing `hidden-crown@1` and `hidden-crown@2` rooms retain their original rules and matching UI text, without a schema migration or database reset. New rooms use the corrected king-interrogation rules.
 
-新房间使用 `hidden-crown@3`：后、双车、双象、双马可成为王冠，王不能加冕。只有王能审问，每局两次，消耗整个回合，可穿透棋子审问同横线、竖线或斜线上的对方候选。王被吃掉后对局继续，但该方无法再审问。规则、提示、操作、观察者界面、记录和导出均同步中英文。审问答案只属于发起方和管理员观察者，发现王冠后仍需吃掉它。审问结果会持续标在棋子上：× 表示不是王冠，王冠图标表示已确认。标记跟随棋子移动，被吃后保留在棋子栏，重连后恢复，回放时随进度显示；对手看不到你的私有标记。审问无法悔棋，后续普通走棋仍可申请悔棋。已有 v1、v2 房间沿用创建时的规则，无需清空数据库。
+新房间使用 `hidden-crown@4`：后、双车、双象、双马可成为王冠，王不能加冕。只有王能审问，每局两次，消耗整个回合，可穿透棋子审问同横线、竖线或斜线上的对方候选。王被吃掉后对局继续，但该方无法再审问。规则、提示、操作、观察者界面、记录和导出均同步中英文。审问答案只属于发起方和管理员观察者，发现王冠后仍需吃掉它。审问结果会持续标在棋子上：× 表示不是王冠，王冠图标表示已确认。标记跟随棋子移动，被吃后保留在棋子栏，重连后恢复，回放时随进度显示；对手看不到你的私有标记。新房间不允许悔棋，因为吃子会透露目标是否为王冠。已有 v1、v2、v3 房间沿用创建时的规则，无需清空数据库。
 
 ## Human vs computer (2.1)
 
@@ -109,7 +109,7 @@ See [VALIDATION.md](VALIDATION.md) for completed checks and remaining external v
 
 Empty `DATABASE_URL` selects SQLite for immediate local testing; a PostgreSQL URL selects an asynchronous pool. Production Compose can connect to an existing PostgreSQL with `docker-compose.postgres.yml`. No Redis/MySQL service is required. This major version uses fresh `hc_` tables and defaults to `hidden-crown-v2.sqlite`; 1.x records are not automatically imported, and the original SQLite file is preserved.
 
-A commit atomically replaces a position snapshot and appends new move/event rows. An approved undo atomically trims the active move history; original moves remain in the event audit together with the undo decision. History is not serialized into the snapshot. A revision check rejects stale concurrent writes and callbacks after deletion; foreign keys cascade deletion. Schema migrations run transactionally and retain a version record.
+A commit atomically replaces a position snapshot and appends new move/event rows. For historical rooms, an approved undo atomically trims the active move history; original moves remain in the event audit together with the undo decision. History is not serialized into the snapshot. A revision check rejects stale concurrent writes and callbacks after deletion; foreign keys cascade deletion. Schema migrations run transactionally and retain a version record.
 
 `RuleSet` is a pure, trusted-code interface for the existing 8x8 chess board/protocol family. Register an implementation in `src/rules/registry.ts` with a unique ID/version, option validation, an initial position, join/setup lifecycle, legal move generation, and `applyCommand`. The latter returns a new state plus private log events, or a safe public error. All built-in gameplay decisions now dispatch through this interface. `rule_action` provides a bounded JSON command envelope for future actions. Hidden rule data belongs in `state.ruleState`, which is never included in player or admin view payloads. Explicitly add any new public presentation fields to the protocol rather than exposing the entire rule state. New non-chess board types require a separate renderer/protocol contract.
 
@@ -129,10 +129,12 @@ Omitting the body keeps the original default game. The shipped UI continues to c
 
 `npm run test:capacity` creates 100 simulated players in 50 isolated games and writes timings to ignored test artifacts. Set `TEST_DATABASE_URL` to select a disposable PostgreSQL database. The tests use real database engines and real HTTP/WebSocket connections; the local timings are not a production capacity promise.
 
-## Undo, turn timing and sound
+## Turn timing, sound and historical compatibility
 
-Players can request undoing their most recent move; if the opponent has replied, both plies are withdrawn. The opponent must accept or decline, and moves pause until the decision. The computer automatically accepts. Crowns remain locked; ended games cannot be undone because crowns have been revealed. Undo restores captures, promotion, castling rights, en-passant, turn and draw counters through the rules engine. Pending requests survive restart; active moves and append-only audit events are committed together in either database. RuleSet implementations can expose `canRequestUndo` and handle `request_undo`/`respond_undo` in `applyCommand`.
+New friend and computer rooms do not show Request undo. Their server rejects both `request_undo` and `respond_undo` with `undo_disabled`, including forged acceptance messages. Retired rules cannot be selected when creating a room; existing rooms retain their pinned versions, finished records and audit events. No database reset or history rewrite is needed.
 
-The board shows elapsed time in the current turn and history shows each move’s think time, using server timestamps with client clock correction. Accepted undo restarts the turn timer. This is informational timing, with no clock or timeout defeat. A quiet turn chime plays on actual transitions to the player’s turn, with a persistent mute control. Browsers require an initial click or keypress to enable audio; reload and presence updates do not replay the chime.
+新建好友和人机房间不再显示“申请悔棋”。服务端拒绝申请、同意或拒绝悔棋的消息，返回 `undo_disabled`。新建房间无法选择支持悔棋的旧规则版本；已有房间的规则版本、已结束对局及日志保留，无需重建数据库。
+
+The operation panel shows elapsed time in the current turn and history shows each move’s think time, using server timestamps with client clock correction. This is informational timing, with no clock or timeout defeat. A quiet turn chime plays on actual transitions to the player’s turn, with a persistent mute control. Browsers require an initial click or keypress to enable audio; reload and presence updates do not replay the chime.
 
 Replay is available to players after the game ends, and to administrators during observation. The selected move stays centered in the scrollable history list while dragging the timeline, clamped at the beginning and end. During play, history is informational without replay links. Source, deployment templates and `install.sh` are maintained together in this public repository.

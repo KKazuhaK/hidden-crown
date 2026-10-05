@@ -382,7 +382,7 @@ function playerControls() {
       if (view.ruleset.version >= 3 && view.pieces[view.role + 'K']?.square === null) panel.append(node('p', 'small', t('kingCapturedInterrogation')));
       if (interrogating) panel.append(node('p', 'small', ruleText('interrogateHelp')));
     }
-    actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
+    if (view.undoEnabled) actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
     actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
     actions.append(button(t('resign'), () => askConfirmation('resignConfirm', () => send({ type: 'resign' })), 'danger quiet-button', connection !== 'connected', 'flag'));
     panel.append(actions);

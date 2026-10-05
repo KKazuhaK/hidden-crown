@@ -17,7 +17,7 @@ export class Room extends DurableObject<unknown> {
         load: async () => {
           const state = await ctx.storage.get<GameState>('state');
           if (!state) return undefined;
-          state.revision ??= 0; state.ruleset ??= ruleRegistry.selection();
+          state.revision ??= 0; state.ruleset ??= ruleRegistry.selection({ id: 'hidden-crown', version: 1 });
           state.initialPosition ??= initialPosition(); state.ruleState ??= {};
           return { state, events: await ctx.storage.get<LogEvent[]>('log') ?? [] };
         },

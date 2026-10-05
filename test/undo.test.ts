@@ -1,10 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import { initialPosition } from '../src/engine';
-import { hiddenCrown } from '../src/rules/hidden-crown';
+import { hiddenCrown } from '../src/rules/hidden-crown-v1';
+import { hiddenCrown as currentRules } from '../src/rules/hidden-crown';
+import { ruleRegistry } from '../src/rules/registry';
 import { parseMessage, viewFor } from '../src/protocol';
 import type { Color, GameCommand, GameState, PieceType } from '../src/types';
 
 const sq = (name: string) => 'abcdefgh'.indexOf(name[0]) + (Number(name[1]) - 1) * 8;
+describe('new rooms without undo', () => {
+  it('only advertises and creates current rules while retaining old versions for existing rooms', () => {
+    expect(ruleRegistry.selectionForCreation().version).toBe(4);
+    expect(ruleRegistry.list().map(r => r.version)).toEqual([4]);
+    for (const version of [1, 2, 3]) {
+      expect(() => ruleRegistry.selectionForCreation({ id: 'hidden-crown', version })).toThrow('unsupported_ruleset');
+      expect(ruleRegistry.resolve({ id: 'hidden-crown', version }).version).toBe(version);
+    }
+  });
+  it('rejects requests and forged approvals in every phase, for either side, without changing state', () => {
+    const state = game(); state.ruleset = ruleRegistry.selection(); state.crowns = { w: 'wQ', b: 'bQ' };
+    for (const phase of ['lobby', 'crown_select', 'playing', 'ended'] as const) {
+      state.phase = phase;
+      const before = structuredClone(state);
+      for (const color of ['w', 'b'] as const) {
+        const view = viewFor(state, color, { w: true, b: true });
+        expect(view.undoEnabled).toBe(false); expect(view.canRequestUndo).toBe(false);
+        for (const command of [{ type: 'request_undo' }, { type: 'respond_undo', accept: true }, { type: 'respond_undo', accept: false }] as const)
+          expect(currentRules.applyCommand(state, color, command, 5000)).toEqual({ error: 'undo_disabled' });
+      }
+      expect(state).toEqual(before);
+    }
+  });
+  it('cannot undo a capture that exposes a crown candidate, and normal play continues', () => {
+    const state = game({ wK: 'e1', wQ: 'd1', bK: 'e8', bQ: 'd8', bBc: 'd7' });
+    state.ruleset = ruleRegistry.selection(); state.crowns = { w: 'wQ', b: 'bQ' };
+    const result = currentRules.applyCommand(state, 'w', { type: 'move', from: sq('d1'), to: sq('d7') }, 2000);
+    if ('error' in result) throw new Error(result.error);
+    const captured = result.state, before = structuredClone(captured);
+    expect(captured.moves.at(-1)?.captured).toBe('bBc'); expect(captured.phase).toBe('playing');
+    expect(currentRules.applyCommand(captured, 'w', { type: 'request_undo' }, 3000)).toEqual({ error: 'undo_disabled' });
+    expect(captured).toEqual(before);
+    expect('state' in currentRules.applyCommand(captured, 'b', { type: 'move', from: sq('e8'), to: sq('f8') }, 4000)).toBe(true);
+  });
+});
 function game(placements?: Record<string, string>): GameState {
   const position = initialPosition();
   if (placements) {
@@ -30,7 +67,7 @@ function move(state: GameState, from: string, to: string, promotion?: 'Q') {
 function undo(state: GameState, color: Color) {
   return command(command(state, color, { type: 'request_undo' }).state, color === 'w' ? 'b' : 'w', { type: 'respond_undo', accept: true }, 20000);
 }
-describe('consensual undo', () => {
+describe('historical consensual undo', () => {
   it('validates strict messages and exposes capabilities without exposing crowns', () => {
     expect(parseMessage(JSON.stringify({ type: 'request_undo' }))).toEqual({ type: 'request_undo' });
     expect(parseMessage(JSON.stringify({ type: 'request_undo', targetPly: 0 }))).toBeNull();

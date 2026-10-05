@@ -45,7 +45,7 @@ export class RoomCore {
         const { roomId, tokens, ruleset: input, computer } = await request.json() as { roomId: string; tokens: GameState["tokens"]; ruleset?: unknown; computer?: ComputerConfig };
         if (computer && (!['w', 'b'].includes(computer.color) || !difficulties.includes(computer.difficulty))) throw new Error('invalid_computer');
         const now = Date.now();
-        const ruleset = ruleRegistry.selection(input), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
+        const ruleset = ruleRegistry.selectionForCreation(input), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
         const state: GameState = {
           ...position, revision: 0, ruleset, initialPosition: structuredClone({ pieces: position.pieces, board: position.board, turn: position.turn }),
           roomId, tokens, ...(computer ? { computer } : {}), createdAt: now, phase: "lobby", moves: [], drawOffer: null,
@@ -107,8 +107,9 @@ export class RoomCore {
     const input: ComputerInput = structuredClone({ color: computer.color, difficulty: computer.difficulty,
       ruleset: state.ruleset, pieces: state.pieces, board: state.board, turn: state.turn,
       enPassant: state.enPassant, halfmoveClock: state.halfmoveClock, ownCrown: state.crowns[computer.color] });
-    if ([2, 3].includes(state.ruleset.version) && state.ruleset.id === 'hidden-crown') {
-      input.interrogationTargets = ruleRegistry.resolve(state.ruleset).interrogationTargets?.(state, computer.color) ?? [];
+    const rules = ruleRegistry.resolve(state.ruleset);
+    if (rules.interrogationTargets) {
+      input.interrogationTargets = rules.interrogationTargets(state, computer.color);
       input.interrogationKnowledge = Object.fromEntries(state.moves.filter(m => m.kind === 'interrogation' && m.color === computer.color).map(m => [m.targetId!, m.answer!]));
     }
     return { revision: state.revision, computer, phase: state.phase as 'crown_select' | 'playing', input, drawOffer: state.drawOffer, undoRequest: state.undoRequest };

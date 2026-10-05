@@ -35,6 +35,7 @@ function finishTurn(next: GameState, captured?: string, mover?: Color) {
 }
 export const hiddenCrown: RuleSet = {
   id: 'hidden-crown', version: 2,
+  availableForNewRooms: false, supportsUndo: true,
   name: { en: 'Hidden Crown', zh: '隐藏王冠' },
   normalizeOptions,
   initialize(_selection: RuleSelection) { return { ...initialPosition(), ruleState: {} }; },

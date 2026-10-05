@@ -5,6 +5,8 @@ import type { Color, GameCommand, GameState, LogEvent, Move, MoveRecord, RuleSel
 export interface RuleSet {
   readonly id: string;
   readonly version: number;
+  readonly availableForNewRooms?: boolean;
+  readonly supportsUndo?: boolean;
   readonly name: { en: string; zh: string };
   normalizeOptions(input: unknown): Record<string, unknown>;
   initialize(selection: RuleSelection): Pick<GameState, 'pieces' | 'board' | 'turn' | 'ply' | 'halfmoveClock' | 'enPassant' | 'ruleState'>;

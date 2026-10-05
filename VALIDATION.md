@@ -140,3 +140,9 @@ Release CI runs the unit/repository and HTTP/WebSocket checks on SQLite and Post
 ## 2.3.5 administrator panel spacing — 2026-10-04
 
 Replaced settings-only margins with a scoped adjacent-panel rule for the administrator dashboard. Browser checks confirm 20px between settings, proxy diagnostics and the game list in English and Chinese. At 390px, both gaps remain 20px after refreshing the list, with no page-level horizontal overflow. The rule does not target login or game panels.
+
+## 2.3.6 new games without undo — 2026-10-04
+
+94 unit tests and both TypeScript targets pass. New rooms default to rules v4, expose no undo capability, and reject requests or forged responses without mutating state in every phase. Retired v1-v3 rules remain loadable but are rejected for new-room creation through both adapters and RoomCore. Tests cover a crown-candidate capture followed by rejected undo and continued normal play, as well as unchanged completed historical state and undo audit. Computer input uses rule capabilities, retaining interrogation support for v4.
+
+SQLite HTTP/WebSocket undo-disabled runtime passes 156 assertions, including friend games, both computer colors, capture, restart, retired-version creation attempts, administrator login, log access, CSV conversion and uninterrupted turns. The interrogation runtime passes 48 assertions. Browser preflight confirms administrator login and god view, actual JSON and CSV downloads verified from disk, no Request undo button in friend or computer games, and no undo mentions in either language's rules dialog. Only isolated local fixtures were used; no player invitation was sent and no administrator screen was shared. Historical room state is not migrated or rewritten.

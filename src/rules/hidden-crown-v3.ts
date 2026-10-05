@@ -1,4 +1,4 @@
-import { advancePosition, initialPosition, opposite, pseudoLegalMoves } from '../engine';
+import { advancePosition, initialPosition, opposite, pseudoLegalMoves, squareName } from '../engine';
 import type { Color, GameCommand, GameState, LogEvent, Move, RuleSelection } from '../types';
 import type { RuleSet } from './contract';
 
@@ -14,8 +14,27 @@ function legalMoves(state: GameState, color: Color) {
   const options = state.ruleset?.options ?? normalizeOptions({});
   return pseudoLegalMoves(state, color).filter(move => (options.castling || !move.castle) && (options.enPassant || !move.enPassant));
 }
+export function crownCandidate(piece: GameState['pieces'][string]) {
+  return /^[wb](Q|R[ah]|B[cf]|N[bg])$/.test(piece.id) && !piece.promoted && piece.type !== 'P' && piece.type !== 'K' && piece.square !== null;
+}
+export function interrogationTargets(state: GameState, color: Color) {
+  const king = state.pieces[color + 'K'];
+  const previous = state.moves.filter(m => m.kind === 'interrogation' && m.color === color);
+  if (!king || king.promoted || king.type !== 'K' || king.square === null || state.board[king.square] !== king.id || previous.length >= 2) return [];
+  return Object.values(state.pieces).filter(piece => {
+    if (piece.color === color || !crownCandidate(piece) || state.board[piece.square!] !== piece.id || previous.some(m => m.targetId === piece.id)) return false;
+    const df = Math.abs(piece.square! % 8 - king.square! % 8), dr = Math.abs(Math.floor(piece.square! / 8) - Math.floor(king.square! / 8));
+    return df === 0 || dr === 0 || df === dr;
+  }).map(piece => piece.id);
+}
+function finishTurn(next: GameState, captured?: string, mover?: Color) {
+  if (captured && captured === next.crowns[opposite(mover!)]) next.result = { winner: mover!, reason: 'crown_captured' };
+  else if (next.halfmoveClock >= Number(next.ruleset.options.drawPlyLimit)) next.result = { winner: null, reason: next.ruleset.options.drawPlyLimit === 100 ? '100_ply' : 'move_limit' };
+  else if (!legalMoves(next, next.turn).length && !interrogationTargets(next, next.turn).length) next.result = { winner: null, reason: 'no_moves' };
+  if (next.result) next.phase = 'ended';
+}
 export const hiddenCrown: RuleSet = {
-  id: 'hidden-crown', version: 1,
+  id: 'hidden-crown', version: 3,
   availableForNewRooms: false, supportsUndo: true,
   name: { en: 'Hidden Crown', zh: '隐藏王冠' },
   normalizeOptions,
@@ -23,14 +42,15 @@ export const hiddenCrown: RuleSet = {
   onPlayersJoined(state) { if (state.phase === 'lobby' && state.joined.w && state.joined.b) state.phase = 'crown_select'; },
   applyCommand,
   legalMoves,
-  canRequestUndo(state, color) { return state.phase === 'playing' && !state.undoRequest && !state.drawOffer && state.moves.some(move => move.color === color); },
+  interrogationTargets,
+  canRequestUndo(state, color) {
+    const last = [...state.moves].reverse().find(m => m.color === color);
+    return state.phase === 'playing' && !state.undoRequest && !state.drawOffer && !!last && last.kind !== 'interrogation' && !state.moves.slice(last.ply - 1).some(m => m.kind === 'interrogation');
+  },
   applyMove(state: GameState, move: Move, now: number) {
     const applied = advancePosition(state, move, now);
     const next = applied.state, captured = applied.record.captured;
-    if (captured && captured === next.crowns[opposite(applied.record.color)]) next.result = { winner: applied.record.color, reason: 'crown_captured' };
-    else if (next.halfmoveClock >= Number(next.ruleset.options.drawPlyLimit)) next.result = { winner: null, reason: next.ruleset.options.drawPlyLimit === 100 ? '100_ply' : 'move_limit' };
-    else if (!legalMoves(next, next.turn).length) next.result = { winner: null, reason: 'no_moves' };
-    if (next.result) next.phase = 'ended';
+    finishTurn(next, captured, applied.record.color);
     return applied;
   }
 };
@@ -43,7 +63,7 @@ function applyCommand(state: GameState, color: Color, command: GameCommand, now:
   if (command.type === 'select_crown') {
     if (state.phase !== 'crown_select') return { error: 'wrong_phase' };
     const piece = state.pieces[command.pieceId];
-    if (state.crowns[color] || !piece || piece.color !== color || piece.type === 'P' || piece.promoted || piece.square === null) return { error: 'invalid_crown' };
+    if (state.crowns[color] || !piece || piece.color !== color || !crownCandidate(piece)) return { error: 'invalid_crown' };
     next.crowns[color] = piece.id; event('crown_locked', { pieceId: piece.id });
     if (next.crowns.w && next.crowns.b) {
       next.phase = 'playing'; next.playStartedAt = now; next.turnStartedAt = now;
@@ -69,6 +89,11 @@ function applyCommand(state: GameState, color: Color, command: GameCommand, now:
         // pawn promotion, castling rights, en-passant and the no-progress counter.
         let restored = { ...next, ...structuredClone(state.initialPosition), moves: [], ply: 0, halfmoveClock: 0, enPassant: null, lastMoveAt: null, result: null } as GameState;
         for (const record of kept) {
+          if (record.kind === 'interrogation') {
+            restored.moves.push(record); restored.ply++; restored.turn = opposite(restored.turn);
+            restored.enPassant = null; restored.halfmoveClock++; restored.lastMoveAt = record.at; restored.turnStartedAt = record.at;
+            continue;
+          }
           const move = legalMoves(restored, restored.turn).find(move => move.pieceId === record.pieceId && move.from === record.from && move.to === record.to && move.promotion === record.promotion);
           if (!move) throw new Error('room_history_inconsistent');
           restored = advancePosition(restored, move, record.at).state;
@@ -83,7 +108,18 @@ function applyCommand(state: GameState, color: Color, command: GameCommand, now:
         const applied = hiddenCrown.applyMove(state, move, now); next = applied.state;
         event('move', { ...applied.record }); break;
       }
-      case 'interrogate': return { error: 'unsupported_action' };
+      case 'interrogate': {
+        if (color !== state.turn) return { error: 'not_your_turn' };
+        if (!interrogationTargets(state, color).includes(command.targetId)) return { error: 'invalid_interrogation' };
+        const king = state.pieces[color + 'K'], target = state.pieces[command.targetId];
+        const record = { kind: 'interrogation' as const, pieceId: king.id, from: king.square!, to: king.square!, targetId: target.id, targetSquare: target.square!,
+          answer: state.crowns[opposite(color)] === target.id ? 'crown' as const : 'clear' as const,
+          ply: state.ply + 1, color, notation: `K${squareName(king.square!)} ? ${target.id}@${squareName(target.square!)}`, at: now,
+          thinkMs: Math.max(0, now - (state.turnStartedAt ?? state.lastMoveAt ?? state.playStartedAt ?? now)) };
+        next.moves.push(record); next.ply++; next.turn = opposite(color); next.enPassant = null; next.halfmoveClock++;
+        next.lastMoveAt = now; next.turnStartedAt = now; next.drawOffer = null;
+        event('interrogation', { ...record }); finishTurn(next); break;
+      }
       case 'offer_draw':
         if (state.drawOffer) return { error: 'draw_already_open' };
         next.drawOffer = color; event('draw_offered'); break;

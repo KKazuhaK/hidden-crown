@@ -184,7 +184,7 @@ const server = createServer(async (req, res) => {
       if (!creates.take(ip)) return limited(res, creates, ip, 'create_ip');
       if (!globalCreates.take('all')) return limited(res, globalCreates, 'all', 'create_global');
       const value = await body(req, 1024); if (Object.keys(value).some(key => !['ruleset', 'computer'].includes(key))) return json(res, 400, { code: 'bad_request' });
-      const ruleset = ruleRegistry.selection(value.ruleset);
+      const ruleset = ruleRegistry.selectionForCreation(value.ruleset);
       const computer = 'computer' in value ? computerRequest(value.computer, ruleset, () => randomInt(2)) : undefined;
       return await serializeAdmission(async () => {
         await expireWaitingRooms();

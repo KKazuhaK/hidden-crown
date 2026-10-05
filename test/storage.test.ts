@@ -10,8 +10,8 @@ import type { Database } from '../server/database/contract';
 import { ruleRegistry } from '../src/rules/registry';
 import type { GameState, LogEvent } from '../src/types';
 
-function initial(id: string): GameState {
-  const ruleset = ruleRegistry.selection(), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
+function initial(id: string, version = 4): GameState {
+  const ruleset = ruleRegistry.selection({ id: 'hidden-crown', version }), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
   return { ...position, revision: 1, ruleset, initialPosition: structuredClone(position), roomId: id, createdAt: Date.now(), phase: 'playing', moves: [], drawOffer: null,
     joined: { w: true, b: true }, claimed: { w: true, b: true }, playStartedAt: 0, lastMoveAt: null, result: null,
     crowns: { w: 'wQ', b: 'bQ' }, tokens: { w: 'secret-white', b: 'secret-black', observer: 'secret-admin' } };
@@ -48,8 +48,8 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect((await database.query('SELECT * FROM hc_moves WHERE room_id=$1', [game.roomId]))).toHaveLength(1);
     await expect(store.commit(applied.state, [], 1)).rejects.toThrow('room_conflict');
   });
-  it('persists private interrogation answers and quotas across loading and later undo', async () => {
-    let game = initial('INTRDB01');
+  it('preserves historical v3 interrogation answers and later undo', async () => {
+    let game = initial('INTRDB01', 3);
     const king = game.pieces.wK; game.board[king.square!] = null; king.square = 19; game.board[19] = king.id;
     const target = game.pieces.bRa; game.board[target.square!] = null;
     game.pieces[game.board[51]!].square = null; target.square = 51; game.board[51] = target.id;
@@ -77,9 +77,17 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect(result.filter(item => item.status === 'fulfilled')).toHaveLength(1);
     expect((await store.load(game.roomId))!.events).toHaveLength(2);
   });
+  it('loads completed historical rooms and their undo audit without rewriting records', async () => {
+    const game = initial('OLDDONE1', 3); game.phase = 'ended'; game.result = { winner: 'w', reason: 'resign' };
+    const events: LogEvent[] = [created, { t: 1000, actor: 'w', type: 'undo_requested', data: { targetPly: 0 } }, { t: 2000, actor: 'b', type: 'undo_accepted', data: { targetPly: 0, removed: [] } }];
+    await store.commit(game, events, 0);
+    const loaded = (await store.load(game.roomId))!;
+    expect(loaded.state).toEqual(game); expect(loaded.events).toEqual(events);
+    expect(ruleRegistry.resolve(loaded.state.ruleset).version).toBe(3);
+  });
   it('atomically rewinds only approved moves, preserves audit and reuses the next ply', async () => {
-    const rules = ruleRegistry.resolve(initial('UNDO0001').ruleset);
-    let game = initial('UNDO0001'); await store.commit(game, [created], 0);
+    const rules = ruleRegistry.resolve(initial('UNDO0001', 3).ruleset);
+    let game = initial('UNDO0001', 3); await store.commit(game, [created], 0);
     async function act(color: 'w' | 'b', value: Parameters<typeof rules.applyCommand>[2], now: number) {
       const next = rules.applyCommand(game, color, value, now);
       if ('error' in next) throw new Error(next.error);
@@ -109,7 +117,7 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect((await store.load(game.roomId))!.state.moves[0]).toMatchObject({ ply: 1, from: 11, to: 27, thinkMs: 1000 });
   });
   it('rolls back deleted moves too when the undo audit insert fails', async () => {
-    let game = initial('UNDOFAIL'); const rules = ruleRegistry.resolve(game.ruleset);
+    let game = initial('UNDOFAIL', 3); const rules = ruleRegistry.resolve(game.ruleset);
     await store.commit(game, [created], 0);
     const moved = rules.applyCommand(game, 'w', { type: 'move', from: 12, to: 28 }, 1000);
     if ('error' in moved) throw new Error(moved.error);

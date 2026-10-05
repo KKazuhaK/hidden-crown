@@ -20,7 +20,7 @@ export default {
         const value = raw ? JSON.parse(raw) : {};
         if (value && typeof value === 'object' && 'computer' in value) return Response.json({ code: 'computer_unavailable' }, { status: 400 });
         if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'ruleset')) throw new Error('bad_request');
-        ruleset = ruleRegistry.selection(value.ruleset);
+        ruleset = ruleRegistry.selectionForCreation(value.ruleset);
       } catch { return Response.json({ code: 'invalid_ruleset' }, { status: 400 }); }
       for (let attempt = 0; attempt < 3; attempt++) {
         const bytes = crypto.getRandomValues(new Uint8Array(8));

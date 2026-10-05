@@ -73,6 +73,7 @@ export interface View {
   undoRequest?: UndoRequest | null;
   turnStartedAt?: number;
   canRequestUndo?: boolean;
+  undoEnabled?: boolean;
   computer?: ComputerConfig;
   revision: number;
   ruleset: RuleSelection;

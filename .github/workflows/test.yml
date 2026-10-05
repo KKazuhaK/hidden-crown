@@ -45,11 +45,11 @@ jobs:
           TEST_DATABASE_URL: ''
       - name: PostgreSQL computer runtime
         run: npm run test:computer
-      - name: SQLite undo runtime
+      - name: SQLite undo-disabled runtime
         run: npm run test:undo
         env:
           TEST_DATABASE_URL: ''
-      - name: PostgreSQL undo runtime
+      - name: PostgreSQL undo-disabled runtime
         run: npm run test:undo
       - name: SQLite interrogation runtime
         run: npm run test:interrogation

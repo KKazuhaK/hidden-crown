@@ -23,14 +23,14 @@ function relocate(state: GameState, id: string, square: number | null) {
   p.square = square; if (square !== null) state.board[square] = id;
 }
 describe('king interrogation', () => {
-  it('creates v3 games with exactly seven crown candidates and retains legacy dispatch', () => {
+  it('creates v4 games with exactly seven crown candidates and retains legacy dispatch', () => {
     const state = game(); state.phase = 'crown_select'; state.crowns = { w: null, b: null };
     for (const color of ['w', 'b'] as const) {
       expect(Object.values(state.pieces).filter(p => p.color === color && crownCandidate(p))).toHaveLength(7);
       expect(hiddenCrown.applyCommand(state, color, { type: 'select_crown', pieceId: color + 'K' }, 0)).toEqual({ error: 'invalid_crown' });
       for (const p of Object.values(state.pieces).filter(p => p.color === color && crownCandidate(p))) expect('state' in hiddenCrown.applyCommand(state, color, { type: 'select_crown', pieceId: p.id }, 0)).toBe(true);
     }
-    expect(ruleRegistry.selection().version).toBe(3);
+    expect(ruleRegistry.selection().version).toBe(4);
     const legacy = ruleRegistry.resolve({ id: 'hidden-crown', version: 1 });
     expect('state' in legacy.applyCommand(state, 'w', { type: 'select_crown', pieceId: 'wQ' }, 0)).toBe(true);
     expect(legacy.applyCommand(game(), 'w', { type: 'interrogate', targetId: 'bQ' }, 0)).toEqual({ error: 'unsupported_action' });
@@ -91,18 +91,20 @@ describe('king interrogation', () => {
     yes.state.phase = 'ended'; expect(v(yes.state, 'b').moves[0]).not.toHaveProperty('answer');
     expect(JSON.stringify(yes.events).length).toBe(JSON.stringify(no.events).length);
   });
-  it('prevents undo from crossing irreversible knowledge, but restores later moves around earlier interrogations', () => {
-    let state = game(); relocate(state, 'wQ', 52);
-    state = action(state, { type: 'move', from: 12, to: 28 }).state;
-    state = action(state, { type: 'interrogate', targetId: 'wQ' }).state;
-    expect(hiddenCrown.canRequestUndo!(state, 'w')).toBe(false); expect(hiddenCrown.canRequestUndo!(state, 'b')).toBe(false);
-    state = game(); relocate(state, 'bRa', 52); state.initialPosition = structuredClone({ pieces: state.pieces, board: state.board, turn: state.turn });
-    state = action(state, { type: 'interrogate', targetId: 'bRa' }).state;
-    state = action(state, { type: 'move', from: 48, to: 40 }).state;
+  it('historical v3 prevents undo from crossing irreversible knowledge, but restores later moves around earlier interrogations', () => {
+    const legacy = ruleRegistry.resolve({ id: 'hidden-crown', version: 3 });
+    const legacyAction = (state: GameState, command: GameCommand, color: Color = state.turn) => { const result = legacy.applyCommand(state, color, command, 5000); if ('error' in result) throw new Error(result.error); return result; };
+    let state = { ...game(), ruleset: ruleRegistry.selection({ id: 'hidden-crown', version: 3 }) }; relocate(state, 'wQ', 52);
+    state = legacyAction(state, { type: 'move', from: 12, to: 28 }).state;
+    state = legacyAction(state, { type: 'interrogate', targetId: 'wQ' }).state;
+    expect(legacy.canRequestUndo!(state, 'w')).toBe(false); expect(legacy.canRequestUndo!(state, 'b')).toBe(false);
+    state = { ...game(), ruleset: ruleRegistry.selection({ id: 'hidden-crown', version: 3 }) }; relocate(state, 'bRa', 52); state.initialPosition = structuredClone({ pieces: state.pieces, board: state.board, turn: state.turn });
+    state = legacyAction(state, { type: 'interrogate', targetId: 'bRa' }).state;
+    state = legacyAction(state, { type: 'move', from: 48, to: 40 }).state;
     const before = structuredClone(state);
-    state = action(state, { type: 'move', from: 12, to: 28 }).state;
-    state = action(state, { type: 'request_undo' }, 'w').state;
-    state = action(state, { type: 'respond_undo', accept: true }, 'b').state;
+    state = legacyAction(state, { type: 'move', from: 12, to: 28 }).state;
+    state = legacyAction(state, { type: 'request_undo' }, 'w').state;
+    state = legacyAction(state, { type: 'respond_undo', accept: true }, 'b').state;
     expect(state.board).toEqual(before.board); expect(state.pieces).toEqual(before.pieces); expect(state.moves).toEqual(before.moves);
     expect(state.halfmoveClock).toBe(before.halfmoveClock); expect(state.enPassant).toBe(before.enPassant);
     expect(viewFor(state, 'w', { w: true, b: true }).interrogationsRemaining?.w).toBe(1);

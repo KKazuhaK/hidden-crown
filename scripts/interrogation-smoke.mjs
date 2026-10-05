@@ -68,7 +68,7 @@ try {
   await black.action({ type: 'select_crown', pieceId: 'bK' }, error('invalid_crown')); checks++;
   await white.action({ type: 'select_crown', pieceId: 'wQ' }, state(v => v.crownLocked.w));
   await black.action({ type: 'select_crown', pieceId: 'bBc' }, state(v => v.phase === 'playing'));
-  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 3);
+  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 4);
   let ply = 0;
   async function move(client, from, to) { ply++; await client.action({ type: 'move', from, to }, state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply)); }
   // e2-e4, e7-e5, Ke1-e2, Qd8-e7. King e2 sees queen e7 through pieces.
@@ -87,7 +87,7 @@ try {
   check(!Object.hasOwn(black.view.moves.at(-1), 'answer')); equal(white.view.interrogationsRemaining, { w: 1, b: 2 });
   equal(white.view.canRequestUndo, false); equal(black.view.canRequestUndo, false);
   await white.action({ type: 'move', from: 28, to: 36 }, error('not_your_turn')); checks++;
-  await white.action({ type: 'request_undo' }, error('undo_unavailable')); checks++;
+  await white.action({ type: 'request_undo' }, error('undo_disabled')); checks++;
   await god.action({ type: 'interrogate', targetId: 'bQ' }, error('player_only')); checks++;
   await black.action({ type: 'get_log' }, error('observer_only')); checks++;
   const log = await request(`/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth);

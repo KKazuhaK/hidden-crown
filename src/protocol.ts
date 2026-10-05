@@ -63,6 +63,7 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
     view.interrogationsRemaining = { w: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'w').length, b: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'b').length };
     if (role !== 'observer') view.interrogationTargets = state.phase === 'playing' && state.turn === role && !state.undoRequest ? rules.interrogationTargets(state, role) : [];
   }
+  view.undoEnabled = rules.supportsUndo === true;
   if (role !== 'observer') view.canRequestUndo = rules.canRequestUndo?.(state, role) ?? false;
   if (role === state.turn && state.phase === "playing") view.legalMoves = state.undoRequest ? [] : rules.legalMoves(state, state.turn);
   return view;
