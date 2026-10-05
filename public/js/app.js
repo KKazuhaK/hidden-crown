@@ -12,7 +12,7 @@ const createButton = document.querySelector('#create-room');
 createButton.addEventListener('click', () => location.assign('/create'));
 const params = new URLSearchParams(location.search), createPage = location.pathname === '/create', rulesPage = location.pathname === '/rules';
 const roomId = createPage || rulesPage ? null : params.get('room');
-document.querySelector('#show-rules').addEventListener('click', () => roomId ? openRulesDialog() : location.assign('/rules'));
+document.querySelector('#show-rules').addEventListener('click', () => roomId || createPage ? openRulesDialog() : location.assign('/rules'));
 document.querySelector('#rules-close').addEventListener('click', () => document.querySelector('#rules-dialog').close());
 const adminWatch = location.pathname === '/admin/watch';
 const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('t');
@@ -31,12 +31,15 @@ let replayPly = null;
 let interrogating = false;
 let connectAttempt = 0;
 let createMode = params.get('mode') === 'computer' ? 'computer' : 'friends', difficulty = 'medium', humanColor = 'w';
+let createRules = params.get('rules') === 'standard-chess' ? 'standard-chess' : 'hidden-crown';
+const standardMode = () => (view?.ruleset?.id ?? createRules) === 'standard-chess';
+const modeName = () => t(standardMode() ? 'standardMode' : 'hiddenMode');
 let computerAvailable = false, capabilitiesLoaded = false;
 let creationError = null;
 if (createPage && params.get('room')) {
   try {
     const saved = JSON.parse(sessionStorage.getItem(`hidden-crown:created:${params.get('room')}`));
-    if (saved?.roomId === params.get('room') && saved.links?.white && saved.links?.black) { inviteLinks = saved.links; createdRoomId = saved.roomId; }
+    if (saved?.roomId === params.get('room') && saved.links?.white && saved.links?.black) { inviteLinks = saved.links; createdRoomId = saved.roomId; createRules = saved.ruleset?.id ?? 'hidden-crown'; }
   } catch { /* Missing browser session returns to the creation form. */ }
 }
 const displayedView = () => replayPly === null ? view : replayAt(view, replayPly);
@@ -83,6 +86,8 @@ function send(message) {
   socket.send(JSON.stringify(message)); return true;
 }
 function ruleText(key, values = {}) {
+  if (standardMode() && key === 'error_undo_disabled') return t('standardUndoDisabled');
+  if (standardMode() && key.startsWith('rule') && /^rule\d+$/.test(key)) return t(`standard_${key}`, values);
   const version = view?.ruleset?.version ?? 3;
   if (version === 1 && ['rule1', 'selectHelp'].includes(key)) key = key === 'rule1' ? 'legacyRule1' : 'legacySelectHelp';
   else if (version === 2 && ['rule1', 'rule7', 'selectHelp', 'interrogateHelp', 'error_invalid_interrogation'].includes(key)) key = `queen_${key}`;
@@ -93,20 +98,21 @@ function rules(open = rulesOpen) {
   const details = node('details', 'panel'); details.open = open;
   details.append(node('summary', '', t('rules')));
   const options = view?.ruleset?.options ?? { castling: true, enPassant: true, drawPlyLimit: 100 };
-  const legacy = view?.ruleset?.version === 1;
-  const list = node('ol'); for (let i = 1; i <= (legacy ? 5 : 8); i++) list.append(node('li', '', i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : ruleText(`rule${i}`, { plies: options.drawPlyLimit })));
+  const legacy = !standardMode() && view?.ruleset?.version === 1;
+  const list = node('ol'); for (let i = 1; i <= (standardMode() ? 10 : legacy ? 5 : 8); i++) list.append(node('li', '', !standardMode() && i === 4 && (!options.castling || !options.enPassant) ? t('specialMoves', { castling: t(options.castling ? 'enabled' : 'disabled'), enPassant: t(options.enPassant ? 'enabled' : 'disabled') }) : ruleText(`rule${i}`, { plies: options.drawPlyLimit })));
   details.append(list); details.addEventListener('toggle', () => { rulesOpen = details.open; }); return details;
 }
 function openRulesDialog() {
   renderRulesDialog(); document.querySelector('#rules-dialog').showModal();
 }
 function renderRulesDialog() {
-  document.querySelector('#rules-dialog-title').textContent = t('rules');
-  document.querySelector('#rules-dialog-content').replaceChildren(rules(true), node('p', 'rules-extra', t('rulesExtra')));
+  document.querySelector('#rules-dialog-title').textContent = `${t('rules')} · ${modeName()}`;
+  document.querySelector('#rules-dialog-content').replaceChildren(rules(true), node('p', 'rules-extra', t(standardMode() ? 'standardRulesExtra' : 'rulesExtra')));
   withIcon(document.querySelector('#rules-close'), t('closeRules'), 'close');
 }
 function linkRows(links) {
   const panel = node('section', 'panel invites'); panel.append(node('h2', '', t('roomReady')), node('p', 'small', t('linksHelp')));
+  panel.append(node('p', 'small', modeName()));
   if (createdRoomId) {
     const number = node('div', 'room-number-row');
     number.append(node('span', '', t('roomNumber')), node('strong', 'room-number', createdRoomId), button(t('copyRoomNumber'), () => copy(createdRoomId), '', false, 'copy'));
@@ -180,7 +186,10 @@ function renderHome() {
   const home = node('div', 'home'), hero = node('section', 'hero');
   hero.append(node('p', 'eyebrow', t('homeTag')), node('div', 'hero-icon', '♔\uFE0E'), homeTitle(), node('p', 'description', t('description')));
   hero.append(joinPanel());
-  if (computerAvailable) hero.append(button(t('playComputer'), () => location.assign('/create?mode=computer'), 'home-computer', false, 'computer'));
+  const practice = node('div', 'home-play-options');
+  if (computerAvailable) practice.append(button(t('playComputer'), () => location.assign('/create?mode=computer'), '', false, 'computer'));
+  practice.append(button(t('learnStandard'), () => location.assign(computerAvailable ? '/create?mode=computer&rules=standard-chess' : '/create?rules=standard-chess'), '', false, 'book'));
+  hero.append(practice);
   const features = node('div', 'features'); for (const key of ['featureSecret', 'featureRemote', 'featureTime']) features.append(node('span', '', t(key)));
   hero.append(features); home.append(hero);
   app.replaceChildren(home);
@@ -202,10 +211,14 @@ function renderCreate() {
   const panel = node('section', 'panel'); panel.append(node('h1', '', t('create')), node('p', 'small', t('createIntro')));
   const form = node('form', 'create-form');
   form.append(selectField(t('gameMode'), 'game-mode', [['friends', t('playFriend')], ['computer', t('playComputer')]], createMode, value => { createMode = value; render(); }));
+  form.append(selectField(t('chessRules'), 'chess-rules', [['hidden-crown', t('hiddenModeDefault')], ['standard-chess', t('standardMode')]], createRules, value => { createRules = value; render(); }));
+  const help = node('p', 'small', t(standardMode() ? 'standardModeHelp' : 'hiddenModeHelp'));
+  const preview = node('button', 'quiet-button'); preview.type = 'button'; withIcon(preview, t('rules'), 'book'); preview.addEventListener('click', openRulesDialog);
+  form.append(help, preview);
   if (createMode === 'computer') {
     form.append(selectField(t('difficulty'), 'computer-difficulty', ['easy', 'medium', 'hard'].map(key => [key, t(`difficulty_${key}`)]), difficulty, value => { difficulty = value; }));
     form.append(selectField(t('yourSide'), 'human-color', [['w', t('white')], ['b', t('black')], ['random', t('randomSide')]], humanColor, value => { humanColor = value; }));
-    form.append(node('p', 'small', t('computerHelp')));
+    form.append(node('p', 'small', t(standardMode() ? 'standardComputerHelp' : 'computerHelp')));
     if (!computerAvailable) form.append(node('p', 'small', t(capabilitiesLoaded ? 'error_computer_unavailable' : 'connecting')));
   }
   const submit = node('button', 'primary'); submit.type = 'submit';
@@ -216,7 +229,9 @@ function renderCreate() {
   page.append(panel); app.replaceChildren(page);
 }
 function renderRulesPage() {
-  const page = node('div', 'create-page'); page.append(node('h1', '', t('rules')), rules(true), node('p', 'rules-extra', t('rulesExtra')),
+  const page = node('div', 'create-page'); page.append(node('h1', '', t('rules')),
+    selectField(t('chessRules'), 'chess-rules', [['hidden-crown', t('hiddenModeDefault')], ['standard-chess', t('standardMode')]], createRules, value => { createRules = value; render(); }),
+    rules(true), node('p', 'rules-extra', t(standardMode() ? 'standardRulesExtra' : 'rulesExtra')),
     button(t('backHome'), () => location.assign('/'), '', false, 'back'));
   app.replaceChildren(page);
 }
@@ -224,7 +239,7 @@ async function createRoom() {
   if (creating || joining) return;
   creating = true; creationError = null; render();
   try {
-    const response = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createMode === 'computer' ? { computer: { humanColor, difficulty } } : {}) });
+    const response = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(createRules === 'standard-chess' ? { ruleset: { id: 'standard-chess', version: 1 } } : {}), ...(createMode === 'computer' ? { computer: { humanColor, difficulty } } : {}) }) });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       const key = data.code === 'rate_limited' && data.scope?.startsWith('create_') ? `error_${data.scope}` : `error_${data.code ?? 'request'}`;
@@ -320,7 +335,8 @@ function resultPanel() {
     if (capture) explanation += ' ' + t('captureSquare', { square: squareName(capture.to) });
   } else if (result.reason === 'resign') explanation = t('resignReason', { color: colorName(result.winner === 'w' ? 'b' : 'w') });
   else explanation = t(result.reason, { plies: view.ruleset?.options.drawPlyLimit ?? 100 });
-  panel.append(node('p', 'result-explanation', explanation), node('h3', '', t('reveal')));
+  panel.append(node('p', 'result-explanation', explanation));
+  if (!standardMode()) panel.append(node('h3', '', t('reveal')));
   const cards = node('div', 'crown-reveal-cards');
   for (const color of player ? [view.role, view.role === 'w' ? 'b' : 'w'] : ['w', 'b']) {
     const id = view.crowns?.[color]; if (!id) continue;
@@ -339,14 +355,14 @@ function resultPanel() {
     card.append(graphic, description); cards.append(card);
   }
   panel.append(cards);
-  if (view.computer && view.role !== 'observer') panel.append(button(t('playAgain'), () => location.assign('/create?mode=computer'), 'primary', false, 'computer'));
+  if (view.computer && view.role !== 'observer') panel.append(button(t('playAgain'), () => location.assign(`/create?mode=computer&rules=${view.ruleset.id}`), 'primary', false, 'computer'));
   return panel;
 }
 function observerPanel() {
   const panel = node('section', 'panel'), stats = node('div', 'observer-stats');
   const phase = node('div'); phase.append(node('span', 'stat-label', t('phase')), node('span', 'stat-value', t(view.phase === 'ended' ? 'endedPhase' : view.phase)));
   stats.append(phase); panel.append(stats, turnTiming());
-  for (const color of ['w', 'b']) {
+  for (const color of standardMode() ? [] : ['w', 'b']) {
     const id = view.crowns?.[color];
     panel.append(node('p', 'small', id ? crownDescription(id) : `${colorName(color)} · ${t('crownUnchosen')}`));
     if (view.interrogationsRemaining) panel.append(node('p', 'small', `${colorName(color)} · ${t('interrogationsLeft', { n: view.interrogationsRemaining[color] })}`));
@@ -373,6 +389,7 @@ function playerControls() {
       }, 'primary', !candidate || lockPending || connection !== 'connected', 'lock'));
     }
   } else if (view.phase === 'playing') {
+    if (standardMode()) panel.append(node('p', 'small', t(view.inCheck && view.turn === view.role ? 'checkHelp' : 'standardTurnHelp')));
     if (view.yourCrown) panel.append(node('p', 'small', t('ownCrown', { piece: pieceName(view.pieces[view.yourCrown]) })));
     const actions = node('div', 'actions');
     if (view.interrogationsRemaining) {
@@ -383,6 +400,12 @@ function playerControls() {
       if (interrogating) panel.append(node('p', 'small', ruleText('interrogateHelp')));
     }
     if (view.undoEnabled) actions.append(button(t('requestUndo'), () => send({ type: 'request_undo' }), '', !view.canRequestUndo || connection !== 'connected', 'back'));
+    if (standardMode() && view.drawClaim && view.turn === view.role) {
+      const move = view.drawClaim.move;
+      const claim = button(t('claimDraw'), () => send({ type: 'rule_action', action: 'claim_draw', payload: move ? { from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {}) } : {} }), '', pending || connection !== 'connected', 'draw');
+      claim.title = t(view.drawClaim.reason) + (move ? ` · ${squareName(move.from)}–${squareName(move.to)}` : ''); actions.append(claim);
+      if (move) panel.append(node('p', 'small', t('claimIntendedMove', { from: squareName(move.from), to: squareName(move.to) })));
+    }
     actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
     actions.append(button(t('resign'), () => askConfirmation('resignConfirm', () => send({ type: 'resign' })), 'danger quiet-button', connection !== 'connected', 'flag'));
     panel.append(actions);
@@ -412,7 +435,8 @@ function statusText() {
   if (view.phase === 'ended') return t('ended');
   if (view.undoRequest) return t('undoWaiting');
   if (pending) return t('movePending');
-  return view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : view.computer ? 'computerThinking' : 'opponentThinking');
+  const status = view.role === 'observer' ? t('turn', { color: colorName(view.turn) }) : t(view.turn === view.role ? 'yourTurn' : view.computer ? 'computerThinking' : 'opponentThinking');
+  return status + (view.inCheck ? ` · ${t('check')}` : '');
 }
 function replayLabel() {
   if (replayPly === null) return t('livePosition');
@@ -464,6 +488,7 @@ function renderGame() {
   if (view.phase === 'playing') for (const color of ['w', 'b']) if (!view.connected[color]) page.append(node('div', 'banner', t('peerOffline', { color: colorName(color) })));
   const heading = node('div', 'game-heading'), title = node('div');
   title.append(node('div', 'room-label', `${t('room')} ${roomId}`), node('h1', '', statusText()));
+  title.append(node('div', 'small game-rules-label', modeName()));
   if (view.computer) title.append(node('div', 'small', `${t('playComputer')} · ${t(`difficulty_${view.computer.difficulty}`)}`));
   heading.append(title, node('div', 'small', view.role === 'observer' ? t('observer') : t('youAre', { color: colorName(view.role) }))); page.append(heading);
   if (view.phase === 'ended' && view.result) page.append(resultPanel());

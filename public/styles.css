@@ -51,6 +51,7 @@ h3 { font-size:14px; font-weight:600; }
 .page-actions { margin-top:20px; }
 .rules-extra { margin:20px 0; color:var(--muted); }
 .home-computer { margin-top:18px; }
+.home-play-options { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:18px; }
 #rules-dialog { max-height:85vh; overflow:auto; }
 #rules-dialog .actions { justify-content:flex-end; margin-top:18px; }
 .hero { text-align:center; padding:12px 10px 28px; }
@@ -171,6 +172,8 @@ details li { margin-top:9px; }
 .crown-state { display:inline-block; margin:4px 0 0; padding:2px 8px; border:1px solid var(--line); border-radius:5px; font-size:12px; }
 .crown-state.is-captured { color:var(--danger); }
 .crown-state.is-surviving { color:var(--accent); }
+.square.in-check { box-shadow:inset 0 0 0 3px var(--danger); background-image:radial-gradient(ellipse at center, #d1484870, transparent 75%); }
+.game-rules-label { margin-top:4px; }
 .result-panel > button { margin-top:18px; }
 @media(max-width:600px) { .crown-reveal-cards { grid-template-columns:1fr; } .crown-reveal-card { padding:12px; } }
 .observer-stats { display:grid; grid-template-columns:1fr 1fr; gap:15px; }

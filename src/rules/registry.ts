@@ -4,6 +4,7 @@ import { hiddenCrown } from './hidden-crown';
 import { hiddenCrown as hiddenCrownV1 } from './hidden-crown-v1';
 import { hiddenCrown as hiddenCrownV2 } from './hidden-crown-v2';
 import { hiddenCrown as hiddenCrownV3 } from './hidden-crown-v3';
+import { standardChess } from './standard-chess';
 
 export class RuleRegistry {
   private readonly entries = new Map<string, RuleSet>();
@@ -33,4 +34,4 @@ export class RuleRegistry {
   }
   list() { return [...this.entries.values()].filter(rules => rules.availableForNewRooms !== false).map(rules => ({ id: rules.id, version: rules.version, name: rules.name, defaultOptions: rules.normalizeOptions({}) })); }
 }
-export const ruleRegistry = new RuleRegistry([hiddenCrown, hiddenCrownV3, hiddenCrownV2, hiddenCrownV1]);
+export const ruleRegistry = new RuleRegistry([hiddenCrown, hiddenCrownV3, hiddenCrownV2, hiddenCrownV1, standardChess]);

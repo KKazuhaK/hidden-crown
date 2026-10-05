@@ -69,7 +69,8 @@ export class RuntimeRoom implements RoomContext {
         command = { type: 'respond_draw' as const, accept: false };
       } else {
         const result = await this.manager.computers.search(turn.input);
-        if (result.targetId) command = { type: 'interrogate' as const, targetId: result.targetId };
+        if (result.claimDraw) command = { type: 'rule_action' as const, action: 'claim_draw', payload: result.claimDraw.move ? { from: result.claimDraw.move.from, to: result.claimDraw.move.to, ...(result.claimDraw.move.promotion ? { promotion: result.claimDraw.move.promotion } : {}) } : {} };
+        else if (result.targetId) command = { type: 'interrogate' as const, targetId: result.targetId };
         else if (result.move) command = { type: 'move' as const, from: result.move.from, to: result.move.to, ...(result.move.promotion ? { promotion: result.move.promotion } : {}) };
         else return;
       }

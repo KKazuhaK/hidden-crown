@@ -1,4 +1,4 @@
-import type { Color, GameCommand, GameState, LogEvent, Move, MoveRecord, RuleSelection } from '../types';
+import type { Color, GameCommand, GameState, LogEvent, Move, MoveRecord, RuleSelection, View } from '../types';
 
 // Rule implementations are trusted code registered at build time, never scripts from a request.
 // Network authentication, room ownership, persistence and hidden-data redaction stay outside them.
@@ -15,5 +15,6 @@ export interface RuleSet {
   legalMoves(state: GameState, color: Color): Move[];
   canRequestUndo?(state: GameState, color: Color): boolean;
   interrogationTargets?(state: GameState, color: Color): string[];
+  status?(state: GameState): Pick<View, 'inCheck' | 'drawClaim'>;
   applyMove(state: GameState, move: Move, now: number): { state: GameState; record: MoveRecord };
 }

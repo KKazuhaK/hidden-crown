@@ -2,6 +2,7 @@ import { language } from './i18n.js';
 
 const strings = {
   en: {
+    standardMode: 'Standard chess', hiddenMode: 'Hidden Crown',
     computer: 'Computer', easy: 'Easy', medium: 'Medium', hard: 'Hard',
     networkTitle: 'Reverse proxy diagnostics', networkAddresses: 'Proxy peer: {peer} · Client address: {client}',
     networkAccepted: 'The trusted proxy supplied a valid client address. Check that Nginx replaces X-Forwarded-For with the actual visitor address.',
@@ -28,6 +29,7 @@ const strings = {
     rateLimited: 'Too many requests. Please try again later.', roomMissing: 'This room no longer exists.', serverBusy: 'The server is busy. Please try again.', requestFailed: 'The request failed. Please try again.', timeout: 'The request timed out. Please try again.'
   },
   zh: {
+    standardMode: '标准国际象棋', hiddenMode: '隐藏王冠',
     computer: '人机', easy: '简单', medium: '中等', hard: '困难',
     networkTitle: '反向代理诊断', networkAddresses: '反代来源：{peer} · 客户端地址：{client}',
     networkAccepted: '已接受受信反代传递的客户端地址。请确认 Nginx 覆盖 X-Forwarded-For，传递真实访客地址。',

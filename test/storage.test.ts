@@ -9,6 +9,7 @@ import { PostgresDatabase } from '../server/database/postgres';
 import type { Database } from '../server/database/contract';
 import { ruleRegistry } from '../src/rules/registry';
 import type { GameState, LogEvent } from '../src/types';
+import { standardChess, drawClaim } from '../src/rules/standard-chess';
 
 function initial(id: string, version = 4): GameState {
   const ruleset = ruleRegistry.selection({ id: 'hidden-crown', version }), position = ruleRegistry.resolve(ruleset).initialize(ruleset);
@@ -47,6 +48,21 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect(JSON.parse(String(rows[0].state))).not.toHaveProperty('moves');
     expect((await database.query('SELECT * FROM hc_moves WHERE room_id=$1', [game.roomId]))).toHaveLength(1);
     await expect(store.commit(applied.state, [], 1)).rejects.toThrow('room_conflict');
+  });
+  it('preserves standard rules, repetition rights and SAN history across storage reload', async () => {
+    const ruleset = ruleRegistry.selectionForCreation({ id: 'standard-chess', version: 1 });
+    let game: GameState = { ...initial('STANDARD'), ...standardChess.initialize(ruleset), ruleset, crowns: { w: null, b: null } };
+    await store.commit(game, [created], 0);
+    for (const [from, to] of [[6,21],[62,45],[21,6],[45,62],[6,21],[62,45],[21,6]]) {
+      const result = standardChess.applyCommand(game, game.turn, { type: 'move', from, to }, game.revision * 1000);
+      if ('error' in result) throw new Error(result.error);
+      const expected = game.revision; game = { ...result.state, revision: expected + 1 };
+      await store.commit(game, result.events, expected);
+    }
+    const loaded = (await store.load('STANDARD'))!.state;
+    expect(loaded.ruleset).toEqual(ruleset); expect(loaded.crowns).toEqual({ w: null, b: null });
+    expect(loaded.moves.map(move => move.notation)).toEqual(['Nf3','Nf6','Ng1','Ng8','Nf3','Nf6','Ng1']);
+    expect(drawClaim(loaded)).toEqual(drawClaim(game)); expect(drawClaim(loaded)?.reason).toBe('threefold_repetition');
   });
   it('preserves historical v3 interrogation answers and later undo', async () => {
     let game = initial('INTRDB01', 3);

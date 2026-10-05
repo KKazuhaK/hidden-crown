@@ -59,7 +59,7 @@ export interface GameState {
   claimed: { w: boolean; b: boolean };
   playStartedAt: number | null;
   lastMoveAt: number | null;
-  result: null | { winner: Color | null; reason: "crown_captured" | "resign" | "no_moves" | "agreement" | "100_ply" | "move_limit" | "admin" };
+  result: null | { winner: Color | null; reason: "crown_captured" | "resign" | "no_moves" | "agreement" | "100_ply" | "move_limit" | "admin" | 'checkmate' | 'stalemate' | 'insufficient_material' | 'threefold_repetition' | 'fivefold_repetition' | 'fifty_move' | 'seventy_five_move' };
   crowns: { w: string | null; b: string | null };
   tokens: { w: string; b: string; observer: string };
 }
@@ -70,6 +70,8 @@ export interface LogEvent {
   data?: Record<string, unknown>;
 }
 export interface View {
+  inCheck?: boolean;
+  drawClaim?: { reason: 'threefold_repetition' | 'fifty_move'; move?: Move };
   undoRequest?: UndoRequest | null;
   turnStartedAt?: number;
   canRequestUndo?: boolean;

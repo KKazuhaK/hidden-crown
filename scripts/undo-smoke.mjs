@@ -61,7 +61,7 @@ try {
   const asset = await fetch(base + '/js/turn-sound.js'); equal(asset.status, 200); check((await asset.text()).includes('createTurnSound'));
   auth = { Cookie: login.headers.get('set-cookie').split(';')[0], Origin: base }; mutate = { ...auth, 'X-CSRF-Token': login.data.csrf };
   const rules = (await request('/api/rules')).data.rulesets;
-  equal(rules.map(r => r.version), [4]);
+  equal(rules.filter(r => r.id === 'hidden-crown').map(r => r.version), [4]);
   for (const version of [1, 2, 3]) {
     const retired = await request('/api/rooms', 'POST', { ruleset: { id: 'hidden-crown', version } });
     equal(retired.status, 400); equal(retired.data.code, 'unsupported_ruleset');

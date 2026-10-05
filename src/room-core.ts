@@ -52,8 +52,8 @@ export class RoomCore {
           joined: { w: false, b: false }, claimed: { w: false, b: false }, playStartedAt: null, lastMoveAt: null, result: null, crowns: { w: null, b: null }
         };
         if (computer) { state.joined[computer.color] = true; state.claimed = { w: true, b: true }; }
-        await this.commit(state, [{ t: now, actor: "system", type: "room_created", ...(computer ? { data: { computer } } : {}) }]);
-        return Response.json({ roomId, links: playerLinksFor(state), ...(computer ? { computer, role: opposite(computer.color), link: linksFor(state)[opposite(computer.color) === 'w' ? 'white' : 'black'] } : {}) });
+        await this.commit(state, [{ t: now, actor: "system", type: "room_created", data: { ruleset, ...(computer ? { computer } : {}) } }]);
+        return Response.json({ roomId, ruleset, links: playerLinksFor(state), ...(computer ? { computer, role: opposite(computer.color), link: linksFor(state)[opposite(computer.color) === 'w' ? 'white' : 'black'] } : {}) });
       });
     }
     if (path === "/join" && request.method === "POST") {
@@ -108,6 +108,7 @@ export class RoomCore {
       ruleset: state.ruleset, pieces: state.pieces, board: state.board, turn: state.turn,
       enPassant: state.enPassant, halfmoveClock: state.halfmoveClock, ownCrown: state.crowns[computer.color] });
     const rules = ruleRegistry.resolve(state.ruleset);
+    if (rules.status) input.drawClaim = rules.status(state).drawClaim;
     if (rules.interrogationTargets) {
       input.interrogationTargets = rules.interrogationTargets(state, computer.color);
       input.interrogationKnowledge = Object.fromEntries(state.moves.filter(m => m.kind === 'interrogation' && m.color === computer.color).map(m => [m.targetId!, m.answer!]));

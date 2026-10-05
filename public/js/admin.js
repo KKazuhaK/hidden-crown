@@ -142,6 +142,7 @@ function render() {
   const body = el('tbody');
   for (const room of data?.rooms ?? []) {
     const roomCell = el('td', room.id, 'notation');
+    roomCell.append(el('div', t(room.ruleset_id === 'standard-chess' ? 'standardMode' : 'hiddenMode'), 'small'));
     if (room.computer_color) roomCell.append(el('div', `${t('computer')} · ${t(room.computer_difficulty)}`, 'small'));
     const phase = el('td', t(room.phase)); if (room.waitingExpiresAt) phase.append(el('div', t('expiresAt', { time: new Date(room.waitingExpiresAt).toLocaleTimeString(language === 'en' ? 'en-US' : 'zh-CN') }), 'small'));
     const row = el('tr'); row.append(roomCell, el('td', new Date(room.created_at).toLocaleString(language === 'en' ? 'en-US' : 'zh-CN')), phase, el('td', String(room.ply)), el('td', t('presenceText', { white: t(room.connected.w ? 'online' : 'offline'), black: t(room.connected.b ? 'online' : 'offline') })));

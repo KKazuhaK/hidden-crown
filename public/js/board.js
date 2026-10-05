@@ -40,6 +40,7 @@ export function renderBoard(container, view, options) {
       button.setAttribute('aria-label', t('squareLabel', { square: squareName(square), piece: piece ? pieceName(piece) : t('empty') }));
       if (last && (last.from === square || (last.kind === 'interrogation' ? last.targetSquare === square : last.to === square))) button.classList.add('last-move');
       if (selected === square || (candidate && candidate === id)) button.classList.add('selected');
+      if (view.inCheck && piece?.type === 'K' && piece.color === view.turn) { button.classList.add('in-check'); button.title = `${pieceName(piece)} · ${t('check')}`; }
       if (view.phase === 'crown_select' && view.role !== 'observer' && !view.crownLocked[view.role] && piece?.color === view.role && canCrown(piece, view.ruleset.version)) button.classList.add('candidate');
       if (piece) {
         const motion = document.createElement('span'); motion.className = 'piece-motion'; motion.dataset.pieceId = id;

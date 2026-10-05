@@ -2,6 +2,10 @@
 
 Two-player online chess with one secret crown per side. Capture the opposing crown to win. There is no check or checkmate. The browser only highlights server-supplied moves.
 
+Hidden Crown remains the default. A separate **Standard chess** mode helps newcomers learn the original game. Select it on the creation page for either friends or the computer, or use **Learn standard chess** from the homepage. Both players joining starts a standard game immediately: there is no crown selection or interrogation. The bilingual rules explain piece movement, check, checkmate, stalemate, promotion, castling and en passant. Standard moves are validated with pinned `chess.js` 1.4.0 and recorded in SAN; a checked king is highlighted. Neither new mode supports undo.
+
+In standard mode, kings cannot be captured or exposed to check; castling cannot cross attacks. Threefold repetition and 50-move draws can be claimed, including by declaring a qualifying intended move. Fivefold repetition and 75 moves per side without a pawn move or capture draw automatically, with checkmate taking priority. Common insufficient-material positions draw automatically. Games use the existing thinking-time display rather than a countdown. The computer supports all three difficulty levels, uses only legal standard moves and can claim a rule-based draw. Replay, administrator access and JSON/CSV exports work with either mode. Exported creation events include the selected rules; existing rooms retain their pinned rules with no database migration.
+
 The production server now supports self-hosted **Docker + Nginx**, using Node.js 24, SQLite or PostgreSQL, and WebSockets. It shares the same pure chess engine and room core with the retained Cloudflare adapter. See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment, resource limits, admin credentials and GHCR publishing.
 
 ## Compose deployment
@@ -87,7 +91,7 @@ node scripts/join-smoke.mjs
 
 These checks create test rooms. When running several suites from one IP, use a disposable server with appropriately raised creation limits. `scripts/persistence-smoke.mjs prepare`, a server restart, then `verify` provides an additional stored-state check; `test:selfhost` also performs a complete restart check itself.
 
-CI repeats tests on native Linux AMD64 and ARM64 and validates the Docker runtime plus Nginx syntax. Tag releases publish a multi-platform GHCR image. The private repository is `KKazuhaK/hidden-crown`; the deployment image is public for anonymous pulls. The image address becomes available after the first successful tag release.
+CI repeats tests on native Linux AMD64 and ARM64 and validates the Docker runtime plus Nginx syntax. Tag releases publish a multi-platform GHCR image. The public repository is `KKazuhaK/hidden-crown`; the deployment image is public for anonymous pulls.
 
 See [VALIDATION.md](VALIDATION.md) for completed checks and remaining external validation. Automated games do not substitute for the recorded research session in `BUILD_SPEC.md`.
 

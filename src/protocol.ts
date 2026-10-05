@@ -59,6 +59,7 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
   if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
   if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
   const rules = ruleRegistry.resolve(state.ruleset);
+  if (rules.status) Object.assign(view, rules.status(state));
   if (rules.interrogationTargets) {
     view.interrogationsRemaining = { w: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'w').length, b: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'b').length };
     if (role !== 'observer') view.interrogationTargets = state.phase === 'playing' && state.turn === role && !state.undoRequest ? rules.interrogationTargets(state, role) : [];

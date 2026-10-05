@@ -1,9 +1,11 @@
 import { opposite, pseudoLegalMoves } from '../engine';
 import type { Color, Difficulty, GameState, Move, Piece, RuleSelection } from '../types';
+import { chooseStandardMove } from './standard-engine';
 
 // Only information a player may know crosses the computation boundary. No enemy crown,
 // tokens, private rule state or crown-selection log is accepted by the search engine.
 export interface ComputerInput {
+  drawClaim?: { reason: 'threefold_repetition' | 'fifty_move'; move?: Move };
   color: Color; difficulty: Difficulty; ruleset: RuleSelection;
   pieces: Record<string, Piece>; board: (string | null)[]; turn: Color;
   enPassant: number | null; halfmoveClock: number; ownCrown: string | null;
@@ -41,7 +43,8 @@ export function advanceSearch(p: Position, m: Move): Position {
 function ordering(p: Position, m: Move) {
   const id = p.board[m.to]; return (id ? values[p.pieces[id].type] * 10 : m.enPassant ? 1000 : 0) + (m.promotion ? values[m.promotion] : 0) + (m.castle ? 30 : 0);
 }
-export function chooseComputerMove(input: ComputerInput, random = Math.random): { move: Move | null; targetId?: string; nodes: number; completedDepth: number } {
+export function chooseComputerMove(input: ComputerInput, random = Math.random): { move: Move | null; targetId?: string; claimDraw?: ComputerInput['drawClaim']; nodes: number; completedDepth: number } {
+  if (input.ruleset.id === 'standard-chess') return chooseStandardMove(input, random);
   const limits = searchLimits[input.difficulty], started = performance.now();
   let nodes = 0, completedDepth = 0, aborted = false;
   const legal = movesFor(input, input.color, input.ruleset.options);
