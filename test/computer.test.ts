@@ -36,6 +36,24 @@ function tactical() {
   return g;
 }
 describe('hidden-information computer player', () => {
+  it('rejects player draw negotiation in both computer rulesets without changing the game', async () => {
+    for (const selection of [ruleRegistry.selection(), ruleRegistry.selection({ id: 'standard-chess', version: 1 })]) {
+      const state = game(); state.ruleset = selection; state.ruleState = ruleRegistry.resolve(selection).initialize(selection).ruleState;
+      const h = context(state), core = new RoomCore(h.ctx); await core.ready;
+      const before = core.computerTurn();
+      for (const command of [{ type: 'offer_draw' }, { type: 'respond_draw', accept: true }, { type: 'respond_draw', accept: false }]) {
+        await core.webSocketMessage(h.socket, JSON.stringify(command));
+        expect(h.frames.at(-1)).toMatchObject({ type: 'error', code: 'computer_draw_offer_disabled' });
+        expect(core.computerTurn()).toEqual(before);
+      }
+    }
+  });
+  it('keeps draw negotiation available between friends', async () => {
+    const state = game(); delete state.computer;
+    const h = context(state), core = new RoomCore(h.ctx); await core.ready;
+    await core.webSocketMessage(h.socket, JSON.stringify({ type: 'offer_draw' }));
+    expect(h.frames.at(-1)).toMatchObject({ type: 'state', view: { drawOffer: 'w', phase: 'playing' } });
+  });
   it('validates difficulty and color before reserving a computer seat', () => {
     expect(computerRequest({ humanColor: 'w', difficulty: 'hard' }, ruleRegistry.selection(), () => 0)).toEqual({ color: 'b', difficulty: 'hard' });
     expect(computerRequest({ humanColor: 'random', difficulty: 'easy' }, ruleRegistry.selection(), () => 1).color).toBe('w');

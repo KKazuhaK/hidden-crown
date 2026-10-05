@@ -31,7 +31,7 @@ umask 077
 mkdir -p "$install_dir"
 cd "$install_dir"
 # The installer and downloaded templates belong to the same versioned release tag.
-config_base=https://raw.githubusercontent.com/KKazuhaK/hidden-crown/v2.4.0
+config_base=https://raw.githubusercontent.com/KKazuhaK/hidden-crown/v2.4.1
 wget -qO docker-compose.yml.new "$config_base/docker-compose.bind.yml"
 wget -qO .env.example.new "$config_base/.env.example"
 mv docker-compose.yml.new docker-compose.yml
@@ -41,7 +41,7 @@ printf '%s\n' \
   'ADMIN_USERNAME=admin' \
   "ADMIN_PASSWORD='$admin_password'" \
   'HOST_PORT=8787' \
-  'HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.4.0' \
+  'HIDDEN_CROWN_IMAGE=ghcr.io/kkazuhak/hidden-crown:2.4.1' \
   'DATABASE_URL=' \
   'WAITING_TIMEOUT_MINUTES=15' \
   'TRUSTED_PROXIES=' > .env

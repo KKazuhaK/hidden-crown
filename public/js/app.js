@@ -406,7 +406,7 @@ function playerControls() {
       claim.title = t(view.drawClaim.reason) + (move ? ` · ${squareName(move.from)}–${squareName(move.to)}` : ''); actions.append(claim);
       if (move) panel.append(node('p', 'small', t('claimIntendedMove', { from: squareName(move.from), to: squareName(move.to) })));
     }
-    actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
+    if (!view.computer) actions.append(button(t('offerDraw'), () => send({ type: 'offer_draw' }), '', !!view.drawOffer || !!view.undoRequest || connection !== 'connected', 'draw'));
     actions.append(button(t('resign'), () => askConfirmation('resignConfirm', () => send({ type: 'resign' })), 'danger quiet-button', connection !== 'connected', 'flag'));
     panel.append(actions);
     if (view.undoRequest) {
@@ -418,7 +418,7 @@ function playerControls() {
       }
       panel.append(bar);
     }
-    if (view.drawOffer) {
+    if (view.drawOffer && !view.computer) {
       const bar = node('div', 'draw-bar'); bar.append(node('p', 'small', t(view.drawOffer === view.role ? 'drawSent' : 'drawReceived')));
       if (view.drawOffer !== view.role) {
         const responses = node('div', 'actions');

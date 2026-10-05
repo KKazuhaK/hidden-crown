@@ -196,6 +196,9 @@ export class RoomCore {
         return;
       }
       if (role === "observer") { this.error(ws, "player_only"); return; }
+      if (state.computer && (m.type === 'offer_draw' || m.type === 'respond_draw')) {
+        this.error(ws, 'computer_draw_offer_disabled'); return;
+      }
       const transition = ruleRegistry.resolve(state.ruleset).applyCommand(state, role, m, Date.now());
       if ('error' in transition) { this.error(ws, transition.error); return; }
       await this.commit(transition.state, transition.events); this.broadcast();

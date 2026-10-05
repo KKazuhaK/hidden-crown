@@ -121,6 +121,9 @@ try {
     ids.push(created.data.roomId); const human = await connect(created.data);
     await human.wait(state(v => v.phase === 'playing')); equal(human.view.crownLocked, { w: false, b: false });
     await human.wait(state(v => v.turn === humanColor && v.legalMoves?.length));
+    await human.action({ type: 'offer_draw' }, error('computer_draw_offer_disabled')); checks++;
+    await human.action({ type: 'respond_draw', accept: true }, error('computer_draw_offer_disabled')); checks++;
+    equal(human.view.drawOffer, null);
     if (humanColor === 'b') equal(human.view.moves[0].color, 'w');
     const legal = human.view.legalMoves[0], before = human.view.moves.length;
     await human.action({ type: 'move', from: legal.from, to: legal.to }, state(v => v.moves.length >= before + 1));

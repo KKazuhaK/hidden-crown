@@ -80,8 +80,9 @@ try {
     await human.wait(f => f.type === 'state' && f.view.moves.length === before + 2 && f.view.turn === humanColor);
     check(human.frames.every(f => f.type !== 'error'));
     for (const frame of human.frames.filter(f => f.type === 'state')) { check(!Object.hasOwn(frame.view, 'crowns')); check(!Object.hasOwn(frame.view, 'tokens')); }
-    await human.action({ type: 'offer_draw' }, f => f.type === 'state' && f.view.drawOffer === humanColor);
-    await human.wait(f => f.type === 'state' && f.view.moves.length === before + 2 && !f.view.drawOffer);
+    await human.action({ type: 'offer_draw' }, f => f.type === 'error' && f.code === 'computer_draw_offer_disabled');
+    await human.action({ type: 'respond_draw', accept: true }, f => f.type === 'error' && f.code === 'computer_draw_offer_disabled');
+    equal(human.view.moves.length, before + 2); equal(human.view.drawOffer, null);
     // An offline human must pause subsequent bot moves, including pending timers.
     const second = human.view.legalMoves[0];
     await human.action({ type: 'move', from: second.from, to: second.to }, f => f.type === 'state' && f.view.moves.length === before + 3);
