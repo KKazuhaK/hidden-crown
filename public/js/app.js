@@ -235,11 +235,11 @@ function renderRulesPage() {
     button(t('backHome'), () => location.assign('/'), '', false, 'back'));
   app.replaceChildren(page);
 }
-async function createRoom() {
+async function createRoom(configuration = null) {
   if (creating || joining) return;
   creating = true; creationError = null; render();
   try {
-    const response = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(createRules === 'standard-chess' ? { ruleset: { id: 'standard-chess', version: 1 } } : {}), ...(createMode === 'computer' ? { computer: { humanColor, difficulty } } : {}) }) });
+    const response = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(configuration ?? { ...(createRules === 'standard-chess' ? { ruleset: { id: 'standard-chess', version: 1 } } : {}), ...(createMode === 'computer' ? { computer: { humanColor, difficulty } } : {}) }) });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       const key = data.code === 'rate_limited' && data.scope?.startsWith('create_') ? `error_${data.scope}` : `error_${data.code ?? 'request'}`;
@@ -253,6 +253,7 @@ async function createRoom() {
     }
     inviteLinks = data.links; createdRoomId = data.roomId;
     sessionStorage.setItem(`hidden-crown:created:${data.roomId}`, JSON.stringify(data));
+    if (!createPage) { location.assign(`/create?room=${encodeURIComponent(data.roomId)}`); return; }
     history.replaceState(null, '', `/create?room=${encodeURIComponent(data.roomId)}`);
     window.scrollTo({ top: 0 });
   } catch { creationError = { key: 'error_request', values: {} }; } finally { creating = false; render(); }
@@ -355,7 +356,18 @@ function resultPanel() {
     card.append(graphic, description); cards.append(card);
   }
   panel.append(cards);
-  if (view.computer && view.role !== 'observer') panel.append(button(t('playAgain'), () => location.assign(`/create?mode=computer&rules=${view.ruleset.id}`), 'primary', false, 'computer'));
+  if (player) {
+    const actions = node('div', 'actions result-actions');
+    actions.append(button(t(creating ? 'creating' : 'newGame'), () => createRoom({
+      ruleset: { ...view.ruleset, version: view.ruleset.id === 'hidden-crown' ? 4 : view.ruleset.version },
+      ...(view.computer ? { computer: { humanColor: view.role, difficulty: view.computer.difficulty } } : {})
+    }), 'primary', creating, 'plus'));
+    actions.append(button(t('backHome'), () => location.assign('/'), '', creating, 'back'));
+    panel.append(actions, node('p', 'small', t(view.computer ? 'newGameComputerHelp' : 'newGameFriendsHelp')));
+    if (creationError) {
+      const error = node('p', 'join-error', t(creationError.key, creationError.values)); error.setAttribute('role', 'alert'); panel.append(error);
+    }
+  }
   return panel;
 }
 function observerPanel() {

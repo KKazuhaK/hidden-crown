@@ -157,3 +157,8 @@ The new SQLite HTTP/WebSocket runtime passes 62 assertions: friend startup witho
 
 - Both computer rulesets hide agreed-draw controls and reject player offers/responses without changing state. Friend games retain draw offers. Rule-based draw claims remain supported.
 - Both TypeScript targets and 24 focused computer/standard tests pass. SQLite computer runtime: 134 assertions; standard runtime: 80 assertions. Browser verified the updated computer controls.
+
+## 2.4.2 new game after completion
+
+- Finished player views now offer New game and Back to home in both languages. Computer games create a new room directly with the same rules, difficulty and human side. Friend games create a new room and show its private player links. Creation errors remain visible with a retryable button. Observers receive no new-game control.
+- JavaScript syntax/build checks passed. Browser verified Standard chess / Hard / human Black survives a new computer game, and a completed standard friend game opens a distinct new room with the correct mode and invitation links. Old results remain viewable.
