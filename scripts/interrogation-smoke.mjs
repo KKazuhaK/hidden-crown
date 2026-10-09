@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import WebSocket from 'ws';
 import pg from 'pg';
+import { recordsCsv } from '../public/js/game-records.js';
 const external = process.env.HIDDEN_CROWN_URL;
 const base = external ?? 'http://127.0.0.1:8811';
 const password = external ? process.env.HIDDEN_CROWN_ADMIN_PASSWORD : 'isolated-interrogation-test-password';
@@ -68,7 +69,7 @@ try {
   await black.action({ type: 'select_crown', pieceId: 'bK' }, error('invalid_crown')); checks++;
   await white.action({ type: 'select_crown', pieceId: 'wQ' }, state(v => v.crownLocked.w));
   await black.action({ type: 'select_crown', pieceId: 'bBc' }, state(v => v.phase === 'playing'));
-  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 4);
+  await white.wait(state(v => v.phase === 'playing')); equal(white.view.ruleset.version, 5);
   let ply = 0;
   async function move(client, from, to) { ply++; await client.action({ type: 'move', from, to }, state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply)); }
   // e2-e4, e7-e5, Ke1-e2, Qd8-e7. King e2 sees queen e7 through pieces.
@@ -79,25 +80,33 @@ try {
   check(white.view.interrogationTargets.includes('bQ'));
   await white.action({ type: 'interrogate', targetId: 'bQ', answer: 'crown' }, error('bad_message')); checks++;
   const beforeBoard = [...white.view.board];
-  ply++;
-  await white.action({ type: 'interrogate', targetId: 'bQ' }, state(v => v.moves.length === ply));
-  await black.wait(state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply));
-  equal(white.view.board, beforeBoard); equal(white.view.turn, 'b'); equal(white.view.phase, 'playing');
-  equal(white.view.moves.at(-1).answer, 'clear'); equal(god.view.moves.at(-1).answer, 'clear');
-  check(!Object.hasOwn(black.view.moves.at(-1), 'answer')); equal(white.view.interrogationsRemaining, { w: 1, b: 2 });
+  const beforeBlack = structuredClone(black.view), beforeRevision = white.view.revision, blackFrames = black.frames.length;
+  await white.action({ type: 'interrogate', targetId: 'bQ' }, state(v => v.interrogations.length === 1));
+  await god.wait(state(v => v.interrogations.length === 1));
+  await black.action({ type: 'ping' }, f => f.type === 'pong');
+  equal(black.frames.slice(blackFrames).filter(f => f.type === 'state'), []); equal(black.view, beforeBlack);
+  equal(white.view.board, beforeBoard); equal(white.view.turn, 'w'); equal(white.view.phase, 'playing');
+  equal(white.view.moves.length, ply); equal(white.view.revision, beforeRevision);
+  equal(white.view.interrogations.at(-1).answer, 'clear'); equal(god.view.interrogations.at(-1).answer, 'clear');
+  equal(black.view.interrogations, []); equal(white.view.interrogationsRemaining, { w: 1 }); equal(black.view.interrogationsRemaining, { b: 2 });
   equal(white.view.canRequestUndo, false); equal(black.view.canRequestUndo, false);
-  await white.action({ type: 'move', from: 28, to: 36 }, error('not_your_turn')); checks++;
+  await black.action({ type: 'move', from: 48, to: 40 }, error('not_your_turn')); checks++;
   await white.action({ type: 'request_undo' }, error('undo_disabled')); checks++;
   await god.action({ type: 'interrogate', targetId: 'bQ' }, error('player_only')); checks++;
   await black.action({ type: 'get_log' }, error('observer_only')); checks++;
   const log = await request(`/api/admin/rooms/${room.roomId}/log`, 'GET', undefined, auth);
   equal(log.data.moves.at(-1).answer, 'clear'); equal(log.data.events.find(e => e.type === 'interrogation').data.targetId, 'bQ');
+  equal(log.status, 200); check(recordsCsv(log.data.moves).includes('"interrogation","bQ","52","clear"'));
+  const wsLog = await god.action({ type: 'get_log' }, f => f.type === 'log'); equal(wsLog.moves, log.data.moves);
   if (!external) {
   for (const socket of sockets) socket.close(); await pause(150); await stop(); await start();
     white = await connect({ ...room, link: room.links.white }); black = await connect({ ...room, link: room.links.black }); god = await connect(room, true);
-    equal(white.view.moves.at(-1).answer, 'clear'); check(!Object.hasOwn(black.view.moves.at(-1), 'answer'));
+    equal(white.view.interrogations.at(-1).answer, 'clear'); equal(black.view.interrogations, []); equal(white.view.turn, 'w'); equal(white.view.moves.length, ply);
     equal(white.view.interrogationsRemaining.w, 1);
   }
+  const beforeNormalRevision = black.view.revision;
+  await move(white, 8, 16); await black.wait(state(v => v.moves.length === ply));
+  equal(black.view.revision - beforeNormalRevision, 1);
   await move(black, 48, 40); await white.wait(state(v => v.moves.length === ply));
   check(!white.view.interrogationTargets.includes('bQ'));
   await white.action({ type: 'interrogate', targetId: 'bQ' }, error('invalid_interrogation')); checks++;
@@ -107,18 +116,20 @@ try {
     await move(black, pawnFrom, pawnTo); await white.wait(state(v => v.moves.length === ply));
   }
   check(white.view.interrogationTargets.includes('bBc'));
-  ply++; await white.action({ type: 'interrogate', targetId: 'bBc' }, state(v => v.moves.length === ply));
-  await black.wait(state(v => v.moves.length === ply)); await god.wait(state(v => v.moves.length === ply));
-  equal(white.view.moves.at(-1).answer, 'crown'); equal(god.view.moves.at(-1).answer, 'crown');
-  equal(white.view.moves.at(-1).pieceId, 'wK'); equal(white.view.moves.at(-1).notation, 'Kf5 ? bBc@c8');
-  check(!Object.hasOwn(black.view.moves.at(-1), 'answer')); equal(white.view.interrogationsRemaining.w, 0); equal(white.view.phase, 'playing');
+  const secondFrames = black.frames.length;
+  await white.action({ type: 'interrogate', targetId: 'bBc' }, state(v => v.interrogations.length === 2));
+  await god.wait(state(v => v.interrogations.length === 2)); await black.action({ type: 'ping' }, f => f.type === 'pong');
+  equal(black.frames.slice(secondFrames).filter(f => f.type === 'state'), []);
+  equal(white.view.interrogations.at(-1).answer, 'crown'); equal(god.view.interrogations.at(-1).answer, 'crown');
+  equal(white.view.interrogations.at(-1).pieceId, 'wK'); equal(white.view.interrogations.at(-1).notation, 'Kf5 ? bBc@c8');
+  equal(black.view.interrogations, []); equal(white.view.interrogationsRemaining.w, 0); equal(white.view.phase, 'playing');
+  await move(white, 9, 17); await black.wait(state(v => v.moves.length === ply));
   await move(black, 50, 42); await white.wait(state(v => v.moves.length === ply));
   equal(white.view.interrogationTargets, []);
   await white.action({ type: 'interrogate', targetId: 'bQ' }, error('invalid_interrogation')); checks++;
   // Identifying the crowned bishop does not capture it or win the game.
   await white.action({ type: 'resign' }, state(v => v.phase === 'ended')); await black.wait(state(v => v.phase === 'ended'));
-  check(white.view.moves.filter(m => m.kind === 'interrogation').every(m => m.answer));
-  check(black.view.moves.filter(m => m.kind === 'interrogation').every(m => !Object.hasOwn(m, 'answer')));
+  equal(white.view.interrogations.length, 2); check(white.view.interrogations.every(m => m.answer)); equal(black.view.interrogations, []);
   const second = await request('/api/rooms', 'POST'); equal(second.status, 201); ids.push(second.data.roomId);
   white = await connect({ ...second.data, link: second.data.links.white }); black = await connect({ ...second.data, link: second.data.links.black }); god = await connect(second.data, true);
   await white.wait(state(v => v.phase === 'crown_select'));

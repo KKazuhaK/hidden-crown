@@ -42,12 +42,14 @@ export function parseMessage(raw: string | ArrayBuffer): ClientMessage | null {
 }
 
 export function viewFor(state: GameState, role: Role, connected: View["connected"], now = Date.now()): View {
+  const rules = ruleRegistry.resolve(state.ruleset);
+  const interrogations = rules.interrogationRecords?.(state) ?? state.moves.filter(record => record.kind === 'interrogation');
   // Explicit allowlist: adding server-only state fields cannot accidentally disclose them.
   const view: View = {
     undoRequest: state.undoRequest ?? null,
     ...(state.turnStartedAt === undefined ? {} : { turnStartedAt: state.turnStartedAt }),
     ...(state.computer ? { computer: state.computer } : {}),
-    revision: state.revision, ruleset: state.ruleset, initialPosition: state.initialPosition,
+    revision: state.revision - (rules.privateInterrogations ? interrogations.length : 0), ruleset: state.ruleset, initialPosition: state.initialPosition,
     role, phase: state.phase, pieces: state.pieces, board: state.board, turn: state.turn,
     moves: state.moves.map(record => {
       const { answer, ...publicRecord } = record;
@@ -58,16 +60,21 @@ export function viewFor(state: GameState, role: Role, connected: View["connected
   };
   if (role !== "observer" && state.crowns[role]) view.yourCrown = state.crowns[role]!;
   if (role === "observer" || state.phase === "ended") view.crowns = state.crowns;
-  const rules = ruleRegistry.resolve(state.ruleset);
   if (rules.status) Object.assign(view, rules.status(state));
   if (rules.interrogationTargets) {
-    view.interrogationsRemaining = { w: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'w').length, b: 2 - state.moves.filter(m => m.kind === 'interrogation' && m.color === 'b').length };
+    view.interrogationsRemaining = Object.fromEntries((role === 'observer' || !rules.privateInterrogations ? ['w', 'b'] : [role]).map(color => [color, 2 - interrogations.filter(record => record.color === color).length]));
+    if (rules.privateInterrogations) view.interrogations = interrogations.filter(record => role === 'observer' || record.color === role);
     if (role !== 'observer') view.interrogationTargets = state.phase === 'playing' && state.turn === role && !state.undoRequest ? rules.interrogationTargets(state, role) : [];
   }
   view.undoEnabled = rules.supportsUndo === true;
   if (role !== 'observer') view.canRequestUndo = rules.canRequestUndo?.(state, role) ?? false;
   if (role === state.turn && state.phase === "playing") view.legalMoves = state.undoRequest ? [] : rules.legalMoves(state, state.turn);
   return view;
+}
+
+// Admin-only exports include bonus actions without making them public move plies.
+export function recordsForExport(view: Pick<View, 'moves' | 'interrogations'>) {
+  return [...view.moves, ...(view.interrogations ?? [])].sort((a, b) => a.ply - b.ply || Number(a.kind !== 'interrogation') - Number(b.kind !== 'interrogation') || a.at - b.at);
 }
 
 export function linksFor(state: GameState): Links {

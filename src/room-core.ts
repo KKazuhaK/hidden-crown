@@ -1,6 +1,6 @@
 import { ruleRegistry } from './rules/registry';
 import type { RoomPersistence } from './persistence';
-import { linksFor, playerLinksFor, parseMessage, viewFor } from "./protocol";
+import { linksFor, playerLinksFor, parseMessage, viewFor, recordsForExport } from "./protocol";
 import { opposite } from './engine';
 import type { ComputerInput } from './computer/engine';
 import { difficulties } from './computer/config';
@@ -111,7 +111,7 @@ export class RoomCore {
     if (rules.status) input.drawClaim = rules.status(state).drawClaim;
     if (rules.interrogationTargets) {
       input.interrogationTargets = rules.interrogationTargets(state, computer.color);
-      input.interrogationKnowledge = Object.fromEntries(state.moves.filter(m => m.kind === 'interrogation' && m.color === computer.color).map(m => [m.targetId!, m.answer!]));
+      input.interrogationKnowledge = Object.fromEntries((rules.interrogationRecords?.(state) ?? state.moves).filter(m => m.kind === 'interrogation' && m.color === computer.color).map(m => [m.targetId!, m.answer!]));
     }
     return { revision: state.revision, computer, phase: state.phase as 'crown_select' | 'playing', input, drawOffer: state.drawOffer, undoRequest: state.undoRequest };
   }
@@ -121,7 +121,7 @@ export class RoomCore {
       if (!turn || turn.revision !== revision) return false;
       const result = ruleRegistry.resolve(this.state!.ruleset).applyCommand(this.state!, turn.computer.color, command, Date.now());
       if ('error' in result) return false;
-      await this.commit(result.state, result.events); this.broadcast(); return true;
+      await this.commit(result.state, result.events); this.broadcast(this.privateActor(command, turn.computer.color)); return true;
     });
   }
 
@@ -141,12 +141,15 @@ export class RoomCore {
     }
     return connected;
   }
-  private broadcast() {
+  private privateActor(command: GameCommand, color: 'w' | 'b') {
+    return command.type === 'interrogate' && ruleRegistry.resolve(this.state!.ruleset).privateInterrogations ? color : undefined;
+  }
+  private broadcast(privateActor?: 'w' | 'b') {
     if (!this.state) return;
     const connected = this.connected(), now = Date.now();
     for (const ws of this.ctx.getWebSockets()) {
       const a = this.attachment(ws);
-      if (a.active && a.role) this.send(ws, { type: "state", view: viewFor(this.state, a.role, connected, now) });
+      if (a.active && a.role && (!privateActor || a.role === privateActor || a.role === 'observer')) this.send(ws, { type: "state", view: viewFor(this.state, a.role, connected, now) });
     }
   }
   private async commit(state: GameState, events: LogEvent[]) {
@@ -191,7 +194,7 @@ export class RoomCore {
       if (m.type === "ping") { this.send(ws, { type: "pong" }); return; }
       if (m.type === "get_log" || m.type === "get_links") {
         if (role !== "observer") { this.error(ws, "observer_only"); return; }
-        if (m.type === "get_log") this.send(ws, { type: "log", events: this.log, moves: state.moves, crowns: state.crowns });
+        if (m.type === "get_log") this.send(ws, { type: "log", events: this.log, moves: recordsForExport(viewFor(state, 'observer', this.connected())), crowns: state.crowns });
         else this.send(ws, { type: "links", links: state.computer ? playerLinksFor(state) : linksFor(state) });
         return;
       }
@@ -201,7 +204,7 @@ export class RoomCore {
       }
       const transition = ruleRegistry.resolve(state.ruleset).applyCommand(state, role, m, Date.now());
       if ('error' in transition) { this.error(ws, transition.error); return; }
-      await this.commit(transition.state, transition.events); this.broadcast();
+      await this.commit(transition.state, transition.events); this.broadcast(this.privateActor(m, role));
     });
   }
 

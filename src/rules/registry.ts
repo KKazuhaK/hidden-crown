@@ -4,6 +4,7 @@ import { hiddenCrown } from './hidden-crown';
 import { hiddenCrown as hiddenCrownV1 } from './hidden-crown-v1';
 import { hiddenCrown as hiddenCrownV2 } from './hidden-crown-v2';
 import { hiddenCrown as hiddenCrownV3 } from './hidden-crown-v3';
+import { hiddenCrown as hiddenCrownV4 } from './hidden-crown-v4';
 import { standardChess } from './standard-chess';
 
 export class RuleRegistry {
@@ -20,7 +21,7 @@ export class RuleRegistry {
     if (!rules) throw new Error('unsupported_ruleset');
     return rules;
   }
-  selection(input: unknown = { id: 'hidden-crown', version: 4 }) {
+  selection(input: unknown = { id: 'hidden-crown', version: 5 }) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid_ruleset');
     const value = input as Record<string, unknown>;
     if (Object.keys(value).some(key => !['id', 'version', 'options'].includes(key)) || typeof value.id !== 'string' || value.id.length > 64 || !Number.isSafeInteger(value.version)) throw new Error('invalid_ruleset');
@@ -34,4 +35,4 @@ export class RuleRegistry {
   }
   list() { return [...this.entries.values()].filter(rules => rules.availableForNewRooms !== false).map(rules => ({ id: rules.id, version: rules.version, name: rules.name, defaultOptions: rules.normalizeOptions({}) })); }
 }
-export const ruleRegistry = new RuleRegistry([hiddenCrown, hiddenCrownV3, hiddenCrownV2, hiddenCrownV1, standardChess]);
+export const ruleRegistry = new RuleRegistry([hiddenCrown, hiddenCrownV4, hiddenCrownV3, hiddenCrownV2, hiddenCrownV1, standardChess]);

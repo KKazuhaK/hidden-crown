@@ -36,6 +36,23 @@ function tactical() {
   return g;
 }
 describe('hidden-information computer player', () => {
+  it('keeps a computer interrogation private and follows it with a move on the same turn', async () => {
+    const state = game(); state.board[0] = null; state.pieces.wRa.square = 52; state.board[52] = 'wRa'; state.pieces.bPe.square = null;
+    const h = context(state), core = new RoomCore(h.ctx); await core.ready;
+    const before = core.computerTurn()!;
+    expect(before.input.interrogationTargets).toContain('wRa');
+    expect(await core.computerAction({ type: 'interrogate', targetId: 'wRa' }, before.revision)).toBe(true);
+    expect(h.frames).toEqual([]);
+    const after = core.computerTurn()!;
+    expect(after.revision).toBe(before.revision + 1); expect(after.input.turn).toBe('b');
+    expect(after.input.interrogationKnowledge).toEqual({ wRa: 'crown' });
+    expect(after.input.interrogationTargets).not.toContain('wRa');
+    expect(await core.computerAction({ type: 'interrogate', targetId: 'wRa' }, before.revision)).toBe(false);
+    const move = chooseComputerMove({ ...after.input, interrogationTargets: [] }, () => 0).move!;
+    expect(await core.computerAction({ type: 'move', from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {}) }, after.revision)).toBe(true);
+    expect(h.frames).toHaveLength(1);
+    expect(h.frames[0]).toMatchObject({ type: 'state', view: { moves: [expect.objectContaining({ color: 'b' })], interrogations: [], interrogationsRemaining: { w: 2 }, revision: before.revision + 1 } });
+  });
   it('rejects player draw negotiation in both computer rulesets without changing the game', async () => {
     for (const selection of [ruleRegistry.selection(), ruleRegistry.selection({ id: 'standard-chess', version: 1 })]) {
       const state = game(); state.ruleset = selection; state.ruleState = ruleRegistry.resolve(selection).initialize(selection).ruleState;

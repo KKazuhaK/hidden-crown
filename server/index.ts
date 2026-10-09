@@ -15,7 +15,7 @@ import { promisify } from 'node:util';
 import { scrypt } from 'node:crypto';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { Limiter, clientIp, proxyInfo } from './security';
-import { playerLinksFor, viewFor } from '../src/protocol';
+import { playerLinksFor, viewFor, recordsForExport } from '../src/protocol';
 
 async function main() {
 const config = configuration();
@@ -169,11 +169,11 @@ const server = createServer(async (req, res) => {
           if (!room) {
             const saved = (await store.load(id))!;
             const view = viewFor(saved.state, 'observer', { w: false, b: false });
-            return json(res, 200, { type: 'log', events: saved.events, moves: view.moves, crowns: view.crowns });
+            return json(res, 200, { type: 'log', events: saved.events, moves: recordsForExport(view), crowns: view.crowns });
           }
           await room.core.ready;
           return room.blockConcurrencyWhile(async () => {
-            const snapshot = room.core.adminSnapshot()!; return json(res, 200, { type: 'log', events: snapshot.events, moves: snapshot.view.moves, crowns: snapshot.view.crowns });
+            const snapshot = room.core.adminSnapshot()!; return json(res, 200, { type: 'log', events: snapshot.events, moves: recordsForExport(snapshot.view), crowns: snapshot.view.crowns });
           });
         }
       }

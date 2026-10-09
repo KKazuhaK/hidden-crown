@@ -39,5 +39,6 @@ export function replayAt(view, ply) {
   const startingTurn = view.initialPosition?.turn ?? 'w';
   const turn = count === view.moves.length ? view.turn : view.moves[count]?.color ?? startingTurn;
   return { ...view, pieces, board, moves: view.moves.slice(0, count), turn, legalMoves: [], phase: 'playing',
+    ...(view.interrogations ? { interrogations: view.interrogations.filter(record => count === view.moves.length || record.ply <= count) } : {}),
     ...(view.ruleset?.id === 'standard-chess' ? { inCheck: /[+#]$/.test(view.moves[count - 1]?.notation ?? '') } : {}) };
 }

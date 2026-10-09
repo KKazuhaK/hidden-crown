@@ -133,7 +133,7 @@ try {
   }
   const hidden = (await request('/api/rooms', 'POST', {})).data; ids.push(hidden.roomId);
   white = await connect({ ...hidden, link: hidden.links.white }); black = await connect({ ...hidden, link: hidden.links.black });
-  await white.wait(state(v => v.phase === 'crown_select')); equal(white.view.ruleset.id, 'hidden-crown'); equal(white.view.ruleset.version, 4);
+  await white.wait(state(v => v.phase === 'crown_select')); equal(white.view.ruleset.id, 'hidden-crown'); equal(white.view.ruleset.version, 5);
   console.log(`Standard chess runtime passed: ${checks} assertions; ${external ? 'container' : adminDb ? 'PostgreSQL' : 'SQLite'}`);
 } finally {
   for (const socket of sockets) socket.close();

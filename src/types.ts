@@ -97,7 +97,8 @@ export interface View {
   crowns?: GameState["crowns"];
   legalMoves?: Move[];
   interrogationTargets?: string[];
-  interrogationsRemaining?: { w: number; b: number };
+  interrogationsRemaining?: Partial<Record<Color, number>>;
+  interrogations?: MoveRecord[];
 }
 export interface Links { white: string; black: string; observer: string }
 export interface RuleSelection { id: string; version: number; options: Record<string, unknown> }

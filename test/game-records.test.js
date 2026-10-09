@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { recordsCsv, actionLabel, thinkingSeconds } from '../public/js/game-records.js';
+import { recordsCsv, actionLabel, thinkingSeconds, visibleRecords } from '../public/js/game-records.js';
 import { replayAt } from '../public/js/replay.js';
 import { initialPosition } from '../src/engine';
 import { crownCandidate } from '../src/rules/hidden-crown';
@@ -20,6 +20,28 @@ describe('interrogations in exports and replay', () => {
     expect(recordsCsv([{ thinkMs: 3599, at: 5000 }])).toContain('"3599"');
   });
   const record = { kind: 'interrogation', ply: 1, color: 'w', pieceId: 'wK', from: 4, to: 4, targetId: 'bBc', targetSquare: 58, answer: 'clear', notation: 'Ke1 ? bBc@c8', thinkMs: 4000, at: 5000 };
+  it('merges only supplied private actions and rewinds knowledge with normal move progress', () => {
+    const position = initialPosition(), move = { ply: 1, pieceId: 'wPe', from: 12, to: 28, color: 'w', at: 6000 };
+    const next = { ...record, ply: 3, targetId: 'bRa', at: 8000 };
+    const view = { ...position, initialPosition: position, role: 'w', moves: [move, { ply: 2, pieceId: 'bPe', from: 52, to: 36, color: 'b', at: 7000 }], interrogations: [record, next] };
+    expect(visibleRecords(view)).toEqual([record, move, view.moves[1], next]);
+    expect(interrogationKnowledge(view)).toEqual({ bBc: 'clear', bRa: 'clear' });
+    expect(interrogationKnowledge(replayAt(view, 0))).toEqual({});
+    expect(interrogationKnowledge(replayAt(view, 1))).toEqual({ bBc: 'clear' });
+    expect(interrogationKnowledge(replayAt(view, 2))).toEqual({ bBc: 'clear', bRa: 'clear' });
+    expect(replayAt(view, 1).turn).toBe('b');
+    expect(visibleRecords({ ...view, interrogations: [] })).toEqual(view.moves);
+  });
+  it('explains private bonus interrogation consistently in both languages', () => {
+    expect(i18n.t('private_rule6')).toContain('then make a normal move');
+    expect(i18n.t('private_rule8')).toContain('opponent receives no notice');
+    expect(i18n.t('private_interrogateHelp')).toContain('Your turn continues');
+    i18n.toggleLanguage();
+    expect(i18n.t('private_rule6')).toContain('审问不占走棋次数');
+    expect(i18n.t('private_rule8')).toContain('对手不会收到提示');
+    expect(i18n.t('private_interrogateHelp')).toContain('仍是你的回合');
+    i18n.toggleLanguage();
+  });
   it('exports the action, target, private answer and timestamp without inventing a capture', () => {
     const csv = recordsCsv([record]);
     expect(csv).toContain('action,target_id,target_square,interrogation_answer');

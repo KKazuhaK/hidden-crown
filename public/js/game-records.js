@@ -7,6 +7,9 @@ export function recordsCsv(records) {
   return ['ply,color,notation,piece_id,captured_id,think_ms,timestamp_iso,action,target_id,target_square,interrogation_answer', ...records.map(record =>
     [record.ply, record.color, record.notation, record.pieceId, record.captured, record.thinkMs, new Date(record.at).toISOString(), record.kind ?? 'move', record.targetId, record.targetSquare, record.answer].map(quote).join(','))].join('\r\n');
 }
+export function visibleRecords(view) {
+  return [...view.moves, ...(view.interrogations ?? [])].sort((a, b) => a.ply - b.ply || Number(a.kind !== 'interrogation') - Number(b.kind !== 'interrogation') || a.at - b.at);
+}
 export function actionLabel(record, translate, pieces) {
   if (record.kind !== 'interrogation') return record.notation;
   const piece = pieces[record.targetId];

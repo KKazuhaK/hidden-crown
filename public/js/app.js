@@ -5,7 +5,7 @@ import { pieceGraphic } from './pieces.js';
 import { animateBoard, resetBoardMotion } from './board-motion.js';
 import { replayAt, canReplay, followReplayRow } from './replay.js';
 import { createTurnSound, startsYourTurn } from './turn-sound.js';
-import { recordsCsv, actionLabel, thinkingSeconds } from './game-records.js';
+import { recordsCsv, actionLabel, thinkingSeconds, visibleRecords } from './game-records.js';
 
 const app = document.querySelector('#app'), languageButton = document.querySelector('#language');
 const createButton = document.querySelector('#create-room');
@@ -88,7 +88,8 @@ function send(message) {
 function ruleText(key, values = {}) {
   if (standardMode() && key === 'error_undo_disabled') return t('standardUndoDisabled');
   if (standardMode() && key.startsWith('rule') && /^rule\d+$/.test(key)) return t(`standard_${key}`, values);
-  const version = view?.ruleset?.version ?? 3;
+  const version = view?.ruleset?.version ?? 5;
+  if (version >= 5 && ['rule6', 'rule8', 'interrogateHelp'].includes(key)) key = `private_${key}`;
   if (version === 1 && ['rule1', 'selectHelp'].includes(key)) key = key === 'rule1' ? 'legacyRule1' : 'legacySelectHelp';
   else if (version === 2 && ['rule1', 'rule7', 'selectHelp', 'interrogateHelp', 'error_invalid_interrogation'].includes(key)) key = `queen_${key}`;
   if (version < 3 && key === 'rule3') key = 'legacyRule3';
@@ -300,12 +301,13 @@ function trays(position = view) {
 function moveTable() {
   const panel = node('section', 'panel'), title = node('h2', '', t('moves'));
   panel.append(title);
-  if (!view.moves.length) { panel.append(node('div', 'empty-moves', t('noMovesYet'))); return panel; }
+  const records = visibleRecords(view);
+  if (!records.length) { panel.append(node('div', 'empty-moves', t('noMovesYet'))); return panel; }
   const scroll = node('div', 'move-scroll'), table = node('table'), head = node('thead'), header = node('tr');
   const columns = view.role === 'observer' ? ['ply', 'color', 'notation', 'capturedColumn', 'thinkTime'] : ['ply', 'color', 'notation', 'thinkTime'];
   for (const key of columns) header.append(node('th', '', t(key))); head.append(header); table.append(head);
   const body = node('tbody');
-  for (const move of view.moves) {
+  for (const move of records) {
     const label = actionLabel(move, t, view.pieces);
     const row = node('tr'); row.append(node('td', '', String(move.ply)), node('td', '', colorName(move.color)), node('td', 'notation', label));
     if (move.kind === 'interrogation') row.children[2].classList.add('interrogation-notation');
@@ -361,7 +363,7 @@ function resultPanel() {
 function resultActions(heading) {
   const actions = node('div', 'actions result-actions');
   actions.append(button(t(creating ? 'creating' : 'newGame'), () => createRoom({
-    ruleset: { ...view.ruleset, version: view.ruleset.id === 'hidden-crown' ? 4 : view.ruleset.version },
+    ruleset: { ...view.ruleset, version: view.ruleset.id === 'hidden-crown' ? 5 : view.ruleset.version },
     ...(view.computer ? { computer: { humanColor: view.role, difficulty: view.computer.difficulty } } : {})
   }), 'primary', creating, 'plus'));
   actions.append(button(t('backHome'), () => location.assign('/'), '', creating, 'back'));
@@ -655,13 +657,18 @@ async function connect() {
       }, 25000);
       if (message.role === 'observer') send({ type: 'get_links' });
     } else if (message.type === 'state') {
-      const oldPly = view?.moves.length, oldPhase = view?.phase, oldUndo = view?.undoRequest;
+      const oldPly = view?.moves.length, oldPhase = view?.phase, oldUndo = view?.undoRequest, oldInterrogations = view?.interrogations?.length;
       if (startsYourTurn(view, message.view)) turnSound.play();
       view = message.view; clockAnchor = { serverNow: view.serverNow, receivedAt: performance.now() };
       if (oldPly !== view.moves.length || oldPhase !== view.phase || JSON.stringify(oldUndo) !== JSON.stringify(view.undoRequest)) { selected = null; interrogating = false; document.querySelector('#promotion').close(); promotionMoves = null; }
       if (oldPly > view.moves.length || !canReplay(view)) replayPly = null;
       const lastAction = view.moves.at(-1);
       if (oldPly !== undefined && oldPly < view.moves.length && lastAction?.kind === 'interrogation' && lastAction.color === view.role) notice('interrogationResult', { piece: pieceName(view.pieces[lastAction.targetId]), answer: t(`interrogation_${lastAction.answer}`) });
+      if (oldInterrogations !== undefined && oldInterrogations < (view.interrogations?.length ?? 0) && view.role !== 'observer') {
+        const record = view.interrogations.at(-1);
+        selected = null; interrogating = false;
+        notice('privateInterrogationResult', { piece: pieceName(view.pieces[record.targetId]), answer: t(`interrogation_${record.answer}`) });
+      }
       if (oldUndo && !view.undoRequest && view.phase === 'playing') notice(oldPly > view.moves.length ? 'undoAccepted' : 'undoDeclined');
       pending = false; lockPending = false; render();
     } else if (message.type === 'pong') lastPong = Date.now();

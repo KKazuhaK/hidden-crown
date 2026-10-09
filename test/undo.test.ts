@@ -9,9 +9,9 @@ import type { Color, GameCommand, GameState, PieceType } from '../src/types';
 const sq = (name: string) => 'abcdefgh'.indexOf(name[0]) + (Number(name[1]) - 1) * 8;
 describe('new rooms without undo', () => {
   it('only advertises and creates current rules while retaining old versions for existing rooms', () => {
-    expect(ruleRegistry.selectionForCreation().version).toBe(4);
-    expect(ruleRegistry.list().filter(r => r.id === 'hidden-crown').map(r => r.version)).toEqual([4]);
-    for (const version of [1, 2, 3]) {
+    expect(ruleRegistry.selectionForCreation().version).toBe(5);
+    expect(ruleRegistry.list().filter(r => r.id === 'hidden-crown').map(r => r.version)).toEqual([5]);
+    for (const version of [1, 2, 3, 4]) {
       expect(() => ruleRegistry.selectionForCreation({ id: 'hidden-crown', version })).toThrow('unsupported_ruleset');
       expect(ruleRegistry.resolve({ id: 'hidden-crown', version }).version).toBe(version);
     }

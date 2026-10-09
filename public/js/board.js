@@ -10,7 +10,7 @@ export function crownBadge(color) {
 }
 // Use only answers visible in this view and in the currently replayed history.
 export function interrogationKnowledge(view) {
-  return Object.fromEntries(view.moves.filter(move => move.kind === 'interrogation' &&
+  return Object.fromEntries([...view.moves, ...(view.interrogations ?? [])].filter(move => move.kind === 'interrogation' &&
     (view.role === 'observer' || move.color === view.role) &&
     ['clear', 'crown'].includes(move.answer)).map(move => [move.targetId, move.answer]));
 }

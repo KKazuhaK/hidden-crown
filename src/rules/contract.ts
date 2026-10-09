@@ -7,6 +7,7 @@ export interface RuleSet {
   readonly version: number;
   readonly availableForNewRooms?: boolean;
   readonly supportsUndo?: boolean;
+  readonly privateInterrogations?: boolean;
   readonly name: { en: string; zh: string };
   normalizeOptions(input: unknown): Record<string, unknown>;
   initialize(selection: RuleSelection): Pick<GameState, 'pieces' | 'board' | 'turn' | 'ply' | 'halfmoveClock' | 'enPassant' | 'ruleState'>;
@@ -15,6 +16,7 @@ export interface RuleSet {
   legalMoves(state: GameState, color: Color): Move[];
   canRequestUndo?(state: GameState, color: Color): boolean;
   interrogationTargets?(state: GameState, color: Color): string[];
+  interrogationRecords?(state: GameState): MoveRecord[];
   status?(state: GameState): Pick<View, 'inCheck' | 'drawClaim'>;
   applyMove(state: GameState, move: Move, now: number): { state: GameState; record: MoveRecord };
 }

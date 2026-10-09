@@ -61,8 +61,8 @@ try {
   const asset = await fetch(base + '/js/turn-sound.js'); equal(asset.status, 200); check((await asset.text()).includes('createTurnSound'));
   auth = { Cookie: login.headers.get('set-cookie').split(';')[0], Origin: base }; mutate = { ...auth, 'X-CSRF-Token': login.data.csrf };
   const rules = (await request('/api/rules')).data.rulesets;
-  equal(rules.filter(r => r.id === 'hidden-crown').map(r => r.version), [4]);
-  for (const version of [1, 2, 3]) {
+  equal(rules.filter(r => r.id === 'hidden-crown').map(r => r.version), [5]);
+  for (const version of [1, 2, 3, 4]) {
     const retired = await request('/api/rooms', 'POST', { ruleset: { id: 'hidden-crown', version } });
     equal(retired.status, 400); equal(retired.data.code, 'unsupported_ruleset');
     equal((await request('/api/rooms', 'POST', { ruleset: { id: 'hidden-crown', version }, computer: { humanColor: 'w', difficulty: 'easy' } })).status, 400);
@@ -78,7 +78,7 @@ try {
   let god = await connect(room, true);
   await white.wait(f => f.type === 'state' && f.view.phase === 'crown_select');
   const denied = async client => {
-    equal(client.view.ruleset.version, 4); equal(client.view.undoEnabled, false); equal(client.view.canRequestUndo, false);
+    equal(client.view.ruleset.version, 5); equal(client.view.undoEnabled, false); equal(client.view.canRequestUndo, false);
     const before = structuredClone(client.view);
     for (const message of [{ type: 'request_undo' }, { type: 'respond_undo', accept: true }, { type: 'respond_undo', accept: false }])
       equal((await client.action(message, f => f.type === 'error')).code, 'undo_disabled');

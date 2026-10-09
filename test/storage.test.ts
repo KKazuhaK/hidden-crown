@@ -49,6 +49,24 @@ for (const kind of kinds) describe(`${kind} repository contract`, () => {
     expect((await database.query('SELECT * FROM hc_moves WHERE room_id=$1', [game.roomId]))).toHaveLength(1);
     await expect(store.commit(applied.state, [], 1)).rejects.toThrow('room_conflict');
   });
+  it('persists private bonus interrogations without adding move plies, then reloads and exports them', async () => {
+    let game = initial('PRIVATE5', 5);
+    game.board[59] = null; game.pieces.bQ.square = 52; game.board[52] = 'bQ'; game.pieces.bPe.square = null;
+    await store.commit(game, [created], 0);
+    const rules = ruleRegistry.resolve(game.ruleset), result = rules.applyCommand(game, 'w', { type: 'interrogate', targetId: 'bQ' }, 5000);
+    if ('error' in result) throw new Error(result.error);
+    game = { ...result.state, revision: 2 }; await store.commit(game, result.events, 1);
+    const saved = (await store.load(game.roomId))!;
+    expect(saved.state.moves).toEqual([]); expect(saved.state.ply).toBe(0); expect(saved.state.turn).toBe('w');
+    expect(rules.interrogationRecords!(saved.state)[0]).toMatchObject({ kind: 'interrogation', answer: 'crown', targetId: 'bQ' });
+    expect(saved.events.at(-1)?.type).toBe('interrogation');
+    const moved = rules.applyCommand(saved.state, 'w', { type: 'move', from: 12, to: 28 }, 6000);
+    if ('error' in moved) throw new Error(moved.error);
+    await store.commit({ ...moved.state, revision: 3 }, moved.events, 2);
+    const reloaded = (await store.load(game.roomId))!;
+    expect(reloaded.state.moves).toHaveLength(1); expect(reloaded.state.moves[0].kind).toBeUndefined();
+    expect(rules.interrogationRecords!(reloaded.state)).toHaveLength(1); expect(reloaded.state.turn).toBe('b');
+  });
   it('preserves standard rules, repetition rights and SAN history across storage reload', async () => {
     const ruleset = ruleRegistry.selectionForCreation({ id: 'standard-chess', version: 1 });
     let game: GameState = { ...initial('STANDARD'), ...standardChess.initialize(ruleset), ruleset, crowns: { w: null, b: null } };

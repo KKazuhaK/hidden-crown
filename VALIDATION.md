@@ -167,3 +167,10 @@ The new SQLite HTTP/WebSocket runtime passes 62 assertions: friend startup witho
 
 - Completed player actions now appear at the upper right aligned with the Game over heading, with contextual help and creation errors below them. Mobile/tablet layouts stack the controls below the title.
 - Browser verified title/action vertical centers within 0.01 CSS px on desktop, and no horizontal overflow at 390 px in both languages. JavaScript syntax check passed.
+
+## 2.5.0 private bonus interrogation — 2026-10-08
+
+- New friend and computer rooms select `hidden-crown@5`; existing v1–v4 rooms retain their pinned behavior. Interrogation is stored separately from normal move plies, preserves the current turn and thinking-clock start, and leaves en passant, castling, draw offers and no-progress rights unchanged. Each side retains two unique targets per game.
+- Privacy checks compare the complete opponent payload before/after interrogation and after a subsequent normal move. Actual WebSocket runtime checks confirm no opponent state frame for private actions, no quota/history/answer disclosure on reconnect or completion, and no public revision jump. Computer input includes only its own private answers and the computer continues moving on the same turn.
+- SQLite runtime: 61 interrogation assertions including restart, authenticated administrator login, HTTP/WebSocket JSON records and CSV conversion; 159 undo-disabled assertions, 134 computer assertions and 80 standard-chess assertions. Storage contracts also cover private actions with zero public move plies and run against PostgreSQL in CI.
+- Browser checks confirm both language tooltips, persistent piece markers, a private history entry for the actor, no corresponding opponent entry or mark, and a normal move following interrogation without errors.
